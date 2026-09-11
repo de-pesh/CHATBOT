@@ -5,7 +5,7 @@ import aiohttp
 from fastapi import HTTPException, status
 
 from app.config import get_settings
-from app.core.stored_procedures import StoredProcedures
+from app.stored_procedures import StoredProcedures
 from app.models.files import FileCreate, FileInDB, FileType
 from app.services.database_service import DatabaseService
 from app.services.redis_service import RedisQueueService

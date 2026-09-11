@@ -15,9 +15,9 @@ from starlette.middleware.gzip import GZipMiddleware
 from fastapi.middleware.cors import CORSMiddleware
 
 # --- Import Logging Setup ---
-from app.logging.logging_config import setup_logging
+from app.observability import setup_logging
 from app.models.common import StatusResponse
-from app.routers.v1 import (
+from app.routers import (
     auth,
     permission,
     role_permission,
@@ -46,7 +46,7 @@ from app.controllers.error_controller import (
 from app.models.common import BaseAppException
 
 # --- Custom Middleware Imports ---
-from app.middleware.request_context import RequestContextMiddleware
+from app.observability import RequestContextMiddleware
 
 # --- Configuration ---
 from app.lifespan_manager import lifespan

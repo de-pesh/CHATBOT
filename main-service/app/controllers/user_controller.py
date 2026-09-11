@@ -3,10 +3,10 @@ from typing import List, Optional
 
 from fastapi import HTTPException, status
 
-from app.core.stored_procedures import StoredProcedures
+from app.stored_procedures import StoredProcedures
 from app.models.auth import UserCreate, UserUpdate, UserInDB
 from app.services.database_service import DatabaseService
-from app.core.security import get_password_hash
+from app.security import get_password_hash
 
 logger = logging.getLogger(__name__)
 

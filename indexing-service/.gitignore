@@ -1,7 +1,0 @@
-.venv/
-__pycache__/
-notebooks/
-documents/
-.env
-.vscode/
-hf_models/

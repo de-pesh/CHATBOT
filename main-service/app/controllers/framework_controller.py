@@ -6,7 +6,7 @@ from typing import Optional, List, Union, Dict, Any
 
 from fastapi import HTTPException, status
 
-from app.core.stored_procedures import StoredProcedures
+from app.stored_procedures import StoredProcedures
 from app.models.framework import FrameworkCreate, FrameworkUpdate, FrameworkInDB
 from app.models.files import VersionInDB
 from app.models.files import FileInDB, FileType

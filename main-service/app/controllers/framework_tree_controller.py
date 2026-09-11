@@ -3,7 +3,7 @@ from typing import Optional, List
 
 from fastapi import HTTPException, status
 
-from app.core.stored_procedures import StoredProcedures
+from app.stored_procedures import StoredProcedures
 from app.models.framework import FrameworkNode, FrameworkTreeResponse
 from app.services.database_service import DatabaseService
 

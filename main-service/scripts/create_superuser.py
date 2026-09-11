@@ -6,8 +6,8 @@ import sys
 # Add the project root to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.core.security import get_password_hash
-from app.core.stored_procedures import StoredProcedures
+from app.security import get_password_hash
+from app.stored_procedures import StoredProcedures
 from app.models.user_models import UserCreate
 from app.services.mysql_service import MySQLService
 from app.config import get_settings

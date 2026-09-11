@@ -7,7 +7,7 @@ from app.config import Settings, get_settings
 from app.services.database_service import DatabaseService
 from app.services.redis_service import RedisQueueService
 from app.models.auth import CurrentUser
-from app.core.auth_bearer import decode_access_token
+from app.security import decode_access_token
 from app.services.storage_service import FileStorageService
 
 
@@ -93,7 +93,7 @@ async def get_current_user(
         raise credentials_exception
     
     # Fetch user from DB using email from token
-    from app.core.stored_procedures import StoredProcedures # Import here to avoid circular dependency
+    from app.stored_procedures import StoredProcedures # Import here to avoid circular dependency
     from app.models.auth import UserInDB
 
     user_results = await db_service.call_procedure(

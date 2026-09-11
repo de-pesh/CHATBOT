@@ -3,7 +3,7 @@ from typing import List, Dict
 
 from fastapi import HTTPException, status
 
-from app.core.stored_procedures import StoredProcedures
+from app.stored_procedures import StoredProcedures
 from app.models.auth import (
     UserRoleAssignmentPermissionCreate, 
     UserRoleAssignmentPermissionUpdate, 

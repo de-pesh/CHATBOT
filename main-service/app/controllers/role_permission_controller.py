@@ -4,7 +4,7 @@ from typing import List
 
 from fastapi import HTTPException, status
 
-from app.core.stored_procedures import StoredProcedures
+from app.stored_procedures import StoredProcedures
 from app.models.auth import RolePermissionUpdate, RolePermissionInDB, RolePermissionMultiCreate, RolePermissionSyncUpdate
 from app.models.auth import PermissionInDB, PermissionResponse
 from app.services.database_service import DatabaseService

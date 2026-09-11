@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 from app.main import app # Import your FastAPI app
 from app.services.user_service import UserService
 from app.dependencies.user_service import get_user_service # To override dependency
-from app.core.security import create_access_token, get_password_hash, verify_password
+from app.security import create_access_token, get_password_hash, verify_password
 
 # Create a TestClient instance
 client = TestClient(app)

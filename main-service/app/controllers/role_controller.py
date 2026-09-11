@@ -3,7 +3,7 @@ from typing import List
 
 from fastapi import HTTPException, status
 
-from app.core.stored_procedures import StoredProcedures
+from app.stored_procedures import StoredProcedures
 from app.models.auth import RoleCreate, RoleUpdate, RoleInDB
 from app.services.database_service import DatabaseService
 

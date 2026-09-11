@@ -16,14 +16,14 @@ Open <http://localhost:3006> (it redirects to `/chatbot/`).
 
 ```bash
 docker compose logs -f main-service   # follow one service
-docker compose restart llm-service    # restart one
+docker compose restart main-service   # restart one
 docker compose down                   # stop; add -v to wipe the databases
 ```
 
 After changing a service's code, rebuild just that image:
 
 ```bash
-docker compose up -d --build llm-service
+docker compose up -d --build main-service
 ```
 
 ### What the compose file sets up for you
@@ -31,8 +31,8 @@ docker compose up -d --build llm-service
 * **MySQL schema** is applied automatically from `main-service/scripts/*.sql`
   on first start - no manual `mysql <` step. It only runs on an empty volume,
   so `docker compose down -v` is how you re-apply it.
-* **Mongo and Neo4j** run as containers too, replacing the hand-started
-  `docker-mongo-1` and the local Neo4j the native script assumed.
+* **Mongo** runs as a container too, replacing the hand-started
+  `docker-mongo-1` that the old native script assumed.
 * **Redis** runs in single-node *cluster* mode, because the code uses
   `redis.asyncio.cluster.RedisCluster` and will not talk to a standalone server.
 * **Config**: the per-service `.env` files are excluded by `.dockerignore` and
@@ -59,8 +59,8 @@ Started at 13. Removed:
 * **neo4j** - driver created at startup, never used by any route; `Neo4jService`
   was never imported. Its failure path could block main-service from booting.
 * **parsing-service, indexing-service, llm-service** - the assessment pipeline.
-  Nothing on the chat or ingestion path touched them. Source still on disk,
-  unbuilt.
+  Nothing on the chat or ingestion path touched them. Source removed; recover
+  it from git history if the assessment features are ever revived.
 * **parsing-rpc-server** - a container, a proto and a network hop for one gRPC
   method, `ParseFile`. Its modules took their dependencies by injection, so they
   moved into `app/parsing/` unchanged.
@@ -150,28 +150,34 @@ the model repo.
   is `vite.qa.ts` minus the Module Federation remote it fetches from a public
   IP. Nothing under `FE/src/` imports that remote.
 
-## Run natively instead
+## Layout
 
-Needs Python 3.12, Poetry, Node and Docker (for the databases).
-
-```bash
-./start-all-services.sh setup    # once: poetry install + npm install
-./start-all-services.sh          # start everything
-./start-all-services.sh status
-./start-all-services.sh stop
+```
+main-service/app/            the REST API: auth, users, roles, files, frameworks
+  routers/                   one module per resource, mounted by main.py
+  controllers/               request handling
+  services/                  mysql, redis, azure blob
+  models/                    pydantic schemas, grouped 5 ways
+  security.py                JWT, bcrypt, the Permission enum
+  stored_procedures.py       every MySQL stored-proc call
+  observability.py           request-ID middleware, filter and logging setup
+chatbot-inferencing-service/app/
+  routers/                   /chat and /kb
+  parsing/                   document extraction (was parsing-rpc-server)
+  kb_worker/                 queue consumer (was chatbot-kb-management-service)
+indexing-rpc-server/         gRPC: embed and search, owns the HF model
+FE/                          React SPA served under /chatbot/
 ```
 
-This still expects the infra-only compose file, kept as
-`docker-compose.infra-only.yml.bak`.
+`app/observability.py` is named in `app/logging.yaml` by dotted path
+(`app.observability.RequestIDFilter`), so renaming it means editing that YAML
+too - nothing imports the filter directly.
 
 ## Ports
 
-Identical in both modes.
-
 | | | | |
 |---|---|---|---|
-| main-service | 8000 | redis | 7000 |
+| main-service | 8000 | redis | 6379 |
 | indexing-rpc-server | 8001 | mongo | 27017 |
-| parsing-rpc-server | 8002 | mysql | 3306 |
-| chatbot-inferencing-service | 8003 | | |
+| chatbot-inferencing-service | 8003 | mysql | 3306 |
 | UI | 3006 | | |

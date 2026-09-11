@@ -1,10 +1,10 @@
 import logging
 from fastapi import HTTPException, status
-from app.core.stored_procedures import StoredProcedures
+from app.stored_procedures import StoredProcedures
 from app.models.auth import LoginRequest, Token, ChangePasswordRequest
 from app.models.auth import CurrentUser, UserInDB, UserUpdate
 from app.services.database_service import DatabaseService
-from app.core.security import verify_password, create_access_token, get_password_hash
+from app.security import verify_password, create_access_token, get_password_hash
 
 logger = logging.getLogger(__name__)
 
