@@ -37,7 +37,7 @@ RUN if [ -n "$PIP_INDEX_URL" ]; then \
     python -m venv /tmp/poetry-venv && \
     /tmp/poetry-venv/bin/pip install --no-cache-dir poetry && \
     /tmp/poetry-venv/bin/poetry config virtualenvs.create false && \
-    /tmp/poetry-venv/bin/poetry install --no-root --no-interaction --no-ansi && \
+    /tmp/poetry-venv/bin/poetry install --no-root --only main --no-interaction --no-ansi && \
     rm -rf /tmp/poetry-venv /opt/app-root/src/.cache/pypoetry && \
     python -c "import fastapi, uvicorn, aiohttp, redis, aiomysql, bcrypt, jose, azure.storage.blob; print('dependency smoke test OK')"
 

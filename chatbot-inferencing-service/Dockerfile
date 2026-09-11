@@ -56,9 +56,9 @@ RUN if [ -n "$PIP_INDEX_URL" ]; then \
     python -m venv /tmp/poetry-venv && \
     /tmp/poetry-venv/bin/pip install --no-cache-dir poetry && \
     /tmp/poetry-venv/bin/poetry config virtualenvs.create false && \
-    /tmp/poetry-venv/bin/poetry install --no-root --no-interaction --no-ansi && \
+    /tmp/poetry-venv/bin/poetry install --no-root --only main --no-interaction --no-ansi && \
     rm -rf /tmp/poetry-venv /opt/app-root/src/.cache/pypoetry && \
-    python -c "import fastapi, uvicorn, aiohttp, redis, motor, grpc, fitz, openpyxl, ocrmypdf, langchain_openai, langchain_ollama; print('dependency smoke test OK')"
+    python -c "import fastapi, uvicorn, aiohttp, redis, motor, grpc, google.protobuf, fitz, openpyxl, ocrmypdf, langchain_openai, langchain_ollama; print('dependency smoke test OK')"
 
 COPY --chown=1001:0 . .
 

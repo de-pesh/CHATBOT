@@ -48,10 +48,10 @@ RUN if [ -n "$PIP_INDEX_URL" ]; then \
     python -m venv /tmp/poetry-venv && \
     /tmp/poetry-venv/bin/pip install --no-cache-dir poetry && \
     /tmp/poetry-venv/bin/poetry config virtualenvs.create false && \
-    /tmp/poetry-venv/bin/poetry install --no-root --no-interaction --no-ansi && \
+    /tmp/poetry-venv/bin/poetry install --no-root --only main --no-interaction --no-ansi && \
     pip install --no-cache-dir grpcio-reflection && \
     rm -rf /tmp/poetry-venv /opt/app-root/src/.cache/pypoetry /opt/app-root/src/.cache/pip && \
-    python -c "import grpc, grpc_reflection, sentence_transformers, torch, pymongo; print('dependency smoke test OK')"
+    python -c "import grpc, grpc_reflection, google.protobuf, sentence_transformers, torch, pymongo; print('dependency smoke test OK')"
 
 # Model must land next to app/ - embedding_service.py resolves it as
 # Path(__file__).parents[2] / "hf_models" / "gte-multilingual-base".

@@ -14,7 +14,11 @@ azure-storage-blob = "^12.25.1"
 aiomysql = "^0.2.0"
 webdavclient3 = "^3.14.6"
 grpcio = "^1.74.0"
-grpcio-tools = "^1.74.0"
+# The generated *_pb2.py stubs import google.protobuf directly, so it is a
+# real runtime dependency. It used to arrive transitively via grpcio-tools
+# (grpcio itself does not depend on it); when that moved to the dev group
+# the inferencing service died at import with "No module named 'google'".
+protobuf = "*"
 langchain-ollama = "^0.3.7"
 langchain-openai = "^0.3.0"
 motor = "^3.7.0"
@@ -31,6 +35,10 @@ redis = "5.2.1"
 
 
 [tool.poetry.group.dev.dependencies]
+# Code generation only: regenerates *_pb2.py from a .proto. The generated
+# stubs are committed and no .proto ships in this repo, so nothing at
+# runtime imports grpc_tools - it was costing 7.8 MB in every image.
+grpcio-tools = "^1.74.0"
 pytest = "^8.4.1"
 
 [build-system]

@@ -21,8 +21,18 @@ sentence-transformers = "^4.0.2"
 torch = {version = "^2.0", source = "pytorch-cpu"}
 langchain-text-splitters = "^0.3.8"
 grpcio = "^1.73.0"
-grpcio-tools = "^1.73.0"
+# The generated *_pb2.py stubs import google.protobuf directly, so it is a
+# real runtime dependency. It used to arrive transitively via grpcio-tools
+# (grpcio itself does not depend on it); when that moved to the dev group
+# the inferencing service died at import with "No module named 'google'".
+protobuf = "*"
 
+
+[tool.poetry.group.dev.dependencies]
+# Code generation only: regenerates *_pb2.py from a .proto. The generated stubs
+# are committed and no .proto ships in this repo, so nothing at runtime imports
+# grpc_tools - it was costing 7.8 MB in every image.
+grpcio-tools = "^1.73.0"
 
 [[tool.poetry.source]]
 name = "pytorch-cpu"
