@@ -38,13 +38,7 @@ class Settings(BaseSettings):
     REDIS_URL: str = Field(..., description="Redis connection URL")
     REDIS_PASSWORD: Optional[SecretStr] = Field(None, description="Redis password (optional)")
     SESSION_EXPIRY_TIME: int = Field(3600, description="Session expiry time in seconds (default: 1 hour)")
-    PARSER_QUEUE_NAME: str = Field(..., description="Name of the queue for parser tasks")
-    LLM_QUEUE_NAME: str = Field(..., description="Name of the queue for llm tasks")
     CHATBOT_QUEUE_NAME: str = Field(..., description="Name of the queue for chatbot tasks")
-    ASSESSMENT_KB_QUEUE_NAME: str = Field(
-        "ccpm_assessment_kb_queue",
-        description="Name of the queue for assessment knowledge-base snapshot tasks",
-    )
 
     # Database configuration
     DB_CONNECTION_STRING: SecretStr

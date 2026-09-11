@@ -1,17 +1,21 @@
 # RedHat UBI9 Python 3.12 - runs as UID 1001, app root is /opt/app-root/src.
 # Base image registry - point at an internal mirror on a closed network.
 ARG BASE_REGISTRY=registry.access.redhat.com
-FROM ${BASE_REGISTRY}/ubi9/python-312:latest
 
-# git-lfs is not in the UBI9 repos, so pull EPEL9 in for it.
+# ==============================================================================
+# Build stage: toolchain, dependencies and the model. None of this ships.
+# ==============================================================================
+FROM ${BASE_REGISTRY}/ubi9/python-312:latest AS builder
+
+# git-lfs is not in the UBI9 repos, so pull EPEL9 in for it. Build-stage only,
+# so there is no need to uninstall it afterwards.
 USER 0
 # EPEL supplies packages UBI9 does not carry. On a closed network set
 # EPEL_RPM_URL="" and make sure the internal repos already provide them.
 ARG EPEL_RPM_URL=https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
 RUN if [ -n "$EPEL_RPM_URL" ]; then dnf install -y "$EPEL_RPM_URL"; fi && \
     dnf install -y git git-lfs && \
-    git lfs install --system && \
-    dnf clean all && rm -rf /var/cache/dnf
+    git lfs install --system
 USER 1001
 
 WORKDIR /opt/app-root/src
@@ -30,15 +34,24 @@ ENV VIRTUAL_ENV=/opt/app-root
 # separately - poetry does not read pip's index-url.
 ARG PIP_INDEX_URL=""
 ARG PIP_TRUSTED_HOST=""
+# Poetry goes in its own throwaway venv, not the app venv. "pip uninstall
+# poetry" leaves its dependencies (dulwich, rapidfuzz, zstandard - ~43 MB)
+# behind in site-packages, and poetry also keeps an artifact cache under
+# .cache/pypoetry - ~650 MB for this dependency set - that pip's
+# --no-cache-dir does not cover. Both would otherwise ride into the runtime
+# stage inside /opt/app-root.
 RUN if [ -n "$PIP_INDEX_URL" ]; then \
         pip config set global.index-url "$PIP_INDEX_URL"; \
         if [ -n "$PIP_TRUSTED_HOST" ]; then pip config set global.trusted-host "$PIP_TRUSTED_HOST"; fi; \
         export POETRY_PYPI_MIRROR_URL="$PIP_INDEX_URL"; \
     fi; \
-    pip install --no-cache-dir poetry && \
-    poetry config virtualenvs.create false && \
-    poetry install --no-root --no-interaction --no-ansi && \
-    pip install --no-cache-dir grpcio-reflection
+    python -m venv /tmp/poetry-venv && \
+    /tmp/poetry-venv/bin/pip install --no-cache-dir poetry && \
+    /tmp/poetry-venv/bin/poetry config virtualenvs.create false && \
+    /tmp/poetry-venv/bin/poetry install --no-root --no-interaction --no-ansi && \
+    pip install --no-cache-dir grpcio-reflection && \
+    rm -rf /tmp/poetry-venv /opt/app-root/src/.cache/pypoetry /opt/app-root/src/.cache/pip && \
+    python -c "import grpc, grpc_reflection, sentence_transformers, torch, pymongo; print('dependency smoke test OK')"
 
 # Model must land next to app/ - embedding_service.py resolves it as
 # Path(__file__).parents[2] / "hf_models" / "gte-multilingual-base".
@@ -79,8 +92,24 @@ print('embedding model warm-up OK, dim =', m.get_sentence_embedding_dimension())
 COPY --chown=1001:0 . .
 
 # OpenShift runs the container with an arbitrary UID in group 0, so every
-# path the app touches must be group-writable.
-RUN chmod -R g=u /opt/app-root/src
+# path the app touches must be group-writable. Done here, in the stage that is
+# thrown away: previously this ran as the last layer of the shipped image and
+# rewrote the mode of all ~1.3 GB of model and venv files, which forced Docker
+# to copy every one of them into a new layer.
+RUN chmod -R g=u /opt/app-root
+
+# ==============================================================================
+# Runtime stage: one COPY of the finished tree, no toolchain, no churn.
+# ==============================================================================
+FROM ${BASE_REGISTRY}/ubi9/python-312:latest
+
+WORKDIR /opt/app-root/src
+
+# Brings both the venv (/opt/app-root/lib) and the app plus model
+# (/opt/app-root/src) across in a single layer.
+COPY --from=builder --chown=1001:0 /opt/app-root /opt/app-root
+
+USER 1001
 
 # HOME is not writable under an arbitrary UID; point every cache at the app dir.
 # TRANSFORMERS_CACHE is deliberately NOT set. It is deprecated, and it overrides
@@ -92,7 +121,8 @@ RUN chmod -R g=u /opt/app-root/src
 ENV PYTHONUNBUFFERED=1 \
     HOME=/opt/app-root/src \
     HF_HOME=/opt/app-root/src/.cache/huggingface \
-    HF_HUB_OFFLINE=1
+    HF_HUB_OFFLINE=1 \
+    VIRTUAL_ENV=/opt/app-root
 
 EXPOSE 8000
 

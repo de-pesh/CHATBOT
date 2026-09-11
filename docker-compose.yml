@@ -34,21 +34,15 @@ x-infra-env: &infra-env
   WORKER_BRPOP_TIMEOUT: "5"
   WORKER_ERROR_RETRY_DELAY: "5"
 
-# Queue names have to agree between producers and consumers.
-# Only two queues are still wired end to end:
-#   chatbot_queue  main-service -> chatbot-kb-management-service
-#   parser_queue / llm_queue    main-service -> (no consumer since the
-#                               assessment pipeline was removed)
-# main-service declares PARSER_QUEUE_NAME and LLM_QUEUE_NAME as required
-# settings, so they stay here even though nothing drains them. DLQ and
-# max-retry keys were consumer-side only and are gone.
+# Queue names have to agree between producers and consumers. One queue is left:
+#   chatbot_queue  main-service -> chatbot-inferencing-service (in-process worker)
+# parser_queue, llm_queue and assessment_kb_queue went with the assessment
+# pipeline - main-service opened a connection to each and nothing ever drained
+# them, so the settings were dropped from config.py too.
 x-queue-env: &queue-env
   CHATBOT_QUEUE_NAME: "chatbot_queue"
   CHATBOT_QUEUE_DLQ_NAME: "chatbot_queue_dlq"
   CHATBOT_QUEUE_MAX_RETRIES: "3"
-  PARSER_QUEUE_NAME: "parser_queue"
-  LLM_QUEUE_NAME: "llm_queue"
-  ASSESSMENT_KB_QUEUE_NAME: "assessment_kb_queue"
 
 # Azure Blob is external and reached over the internet; four services need it.
 # Values come from the .env file next to this one (compose loads it).

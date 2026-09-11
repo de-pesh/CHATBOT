@@ -43,14 +43,22 @@ ENV VIRTUAL_ENV=/opt/app-root
 # separately - poetry does not read pip's index-url.
 ARG PIP_INDEX_URL=""
 ARG PIP_TRUSTED_HOST=""
+# Poetry goes in its own throwaway venv, not the app venv. Installed alongside
+# the app it leaves ~43 MB of its own dependencies (dulwich, rapidfuzz,
+# zstandard) behind in site-packages, and "pip uninstall poetry" does not take
+# those with it. It also keeps an artifact cache under .cache/pypoetry - 245 MB
+# for this dependency set - that pip's --no-cache-dir does not cover.
 RUN if [ -n "$PIP_INDEX_URL" ]; then \
         pip config set global.index-url "$PIP_INDEX_URL"; \
         if [ -n "$PIP_TRUSTED_HOST" ]; then pip config set global.trusted-host "$PIP_TRUSTED_HOST"; fi; \
         export POETRY_PYPI_MIRROR_URL="$PIP_INDEX_URL"; \
     fi; \
-    pip install --no-cache-dir poetry && \
-    poetry config virtualenvs.create false && \
-    poetry install --no-root --no-interaction --no-ansi
+    python -m venv /tmp/poetry-venv && \
+    /tmp/poetry-venv/bin/pip install --no-cache-dir poetry && \
+    /tmp/poetry-venv/bin/poetry config virtualenvs.create false && \
+    /tmp/poetry-venv/bin/poetry install --no-root --no-interaction --no-ansi && \
+    rm -rf /tmp/poetry-venv /opt/app-root/src/.cache/pypoetry && \
+    python -c "import fastapi, uvicorn, aiohttp, redis, motor, grpc, fitz, openpyxl, ocrmypdf, langchain_openai, langchain_ollama; print('dependency smoke test OK')"
 
 COPY --chown=1001:0 . .
 

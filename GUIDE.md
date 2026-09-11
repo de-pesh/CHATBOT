@@ -83,11 +83,13 @@ replicas, `true` on a worker replica. No code change, no second codebase.
 | | was | now |
 |---|---|---|
 | containers | 13 | **7** |
-| all images | ~80 GB | **14 GB** |
-| indexing-rpc-server | 17.2 GB | 8.4 GB |
+| all images | ~80 GB | **8.4 GB** |
+| indexing-rpc-server | 17.2 GB | **4.4 GB** |
+| chatbot-inferencing-service | - | **2.2 GB** |
+| main-service | - | **1.68 GB** |
 | parsing-rpc-server | 17.2 GB | *gone (folded in)* |
 
-Two causes, both fixed:
+Causes, all fixed:
 
 * `parsing-rpc-server` baked in the 600 MB embedding model and the whole torch
   stack for an `EmbeddingService` that was **never imported**.
@@ -95,6 +97,19 @@ Two causes, both fixed:
   workload where `torch.cuda.is_available()` is `False`. `indexing-rpc-server`
   now pins torch to the PyTorch CPU index (see its `pyproject.toml`; a closed
   network needs an internal mirror of that index).
+* **Poetry shipped inside every image.** Its artifact cache under
+  `.cache/pypoetry` is not covered by pip's `--no-cache-dir` and came to 649 MB
+  in indexing, 245 MB in inferencing and 63 MB in main-service. Poetry now
+  installs into a throwaway venv under `/tmp` and is deleted after resolving
+  dependencies, which also keeps its own dependencies out of site-packages.
+  Each install ends with an import smoke test so a build fails loudly if
+  poetry ever resolves a different target env.
+* **`chmod -R g=u` ran last in `indexing-rpc-server`,** after the 600 MB model.
+  chmod rewrites every file's metadata, so Docker copied the whole tree into a
+  new layer - 1.31 GB of pure duplication. That image is now a two-stage build:
+  the toolchain (git, git-lfs, EPEL, poetry) and the chmod happen in a builder
+  stage that is discarded, and the runtime stage is a single COPY of the
+  finished tree.
 
 ### Redis: standalone, not cluster
 

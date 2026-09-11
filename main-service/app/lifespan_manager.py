@@ -129,30 +129,6 @@ async def lifespan(app: FastAPI):
     await app.state.redis_chatbot_queue.initialize()
     logger.info("Redis chatbot queue service initialized.")
 
-    app.state.redis_llm_queue = RedisQueueService(
-        queue_name=settings.LLM_QUEUE_NAME,
-        redis_url=settings.REDIS_URL,
-        redis_password=redis_password
-    )
-    await app.state.redis_llm_queue.initialize()
-    logger.info("Redis LLM queue service initialized.")
-
-    app.state.redis_parser_queue = RedisQueueService(
-        queue_name=settings.PARSER_QUEUE_NAME,
-        redis_url=settings.REDIS_URL,
-        redis_password=redis_password
-    )
-    await app.state.redis_parser_queue.initialize()
-    logger.info("Redis Parser queue service initialized.")
-
-    app.state.redis_assessment_kb_queue = RedisQueueService(
-        queue_name=settings.ASSESSMENT_KB_QUEUE_NAME,
-        redis_url=settings.REDIS_URL,
-        redis_password=redis_password
-    )
-    await app.state.redis_assessment_kb_queue.initialize()
-    logger.info("Redis Assessment KB queue service initialized.")
-
     # Create and store a shared aiohttp ClientSession for optimized HTTP requests
     # to other internal services (e.g. chatbot-inferencing-service).
     logger.info("Creating shared aiohttp client session...")

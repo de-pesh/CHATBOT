@@ -36,18 +36,6 @@ def get_chatbot_queue(request: Request) -> RedisQueueService:
     """Dependency that provides the RedisQueueService instance for chatbot queue from the application state."""
     return request.app.state.redis_chatbot_queue
 
-def get_llm_queue(request: Request) -> RedisQueueService:
-    """Dependency that provides the RedisQueueService instance for llm queue from the application state."""
-    return request.app.state.redis_llm_queue
-
-def get_parser_queue(request: Request) -> RedisQueueService:
-    """Dependency that provides the RedisQueueService instance for llm queue from the application state."""
-    return request.app.state.redis_parser_queue
-
-def get_assessment_kb_queue(request: Request) -> RedisQueueService:
-    """Dependency that provides the RedisQueueService instance for the assessment knowledge-base queue."""
-    return request.app.state.redis_assessment_kb_queue
-
 
 def get_http_client(request: Request) -> aiohttp.ClientSession:
     """Dependency that provides the shared aiohttp ClientSession for internal service-to-service calls."""
