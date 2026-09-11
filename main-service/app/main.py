@@ -19,13 +19,6 @@ from app.observability import setup_logging
 from app.models.common import StatusResponse
 from app.routers import (
     auth,
-    permission,
-    role_permission,
-    role,
-    user_role_assignment_permission,
-    user,
-    organization,
-    framework,
     file,
     kb
 )
@@ -103,16 +96,9 @@ logger.info("Exception handlers registered.")
 # Include API routers for different functionalities
 # Each router groups related endpoints, improving modularity and organization.
 logger.info("Including API routers...")
-app.include_router(organization.router, prefix="/organizations", tags=["Organizations"])
-app.include_router(framework.router, prefix="/frameworks", tags=["Frameworks"])
 app.include_router(file.router, prefix="/files", tags=["Files"])
 app.include_router(kb.router, prefix="/kb", tags=["Knowledge Base"])
 app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
-app.include_router(permission.router, prefix="/permissions", tags=["Permissions"])
-app.include_router(role_permission.router, prefix="/role-permissions", tags=["Role Permissions"])
-app.include_router(role.router, prefix="/roles", tags=["Roles"])
-app.include_router(user_role_assignment_permission.router, prefix="/user-role-assignments", tags=["User Role Assignments"])
-app.include_router(user.router, prefix="/user", tags=["User"])
 
 
 logger.info("API routers included.")

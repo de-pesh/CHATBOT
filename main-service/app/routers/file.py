@@ -37,8 +37,6 @@ async def create_files(
     current_user: CurrentUserDep,
     files: List[UploadFile] = File(...),
     file_type: FileType = FileType.FRAMEWORK,
-    assessment_id: Optional[int] = None,
-    framework_id: Optional[int] = None,
     db_service: DatabaseService = Depends(get_db_service),
     file_storage_service: FileStorageService = Depends(get_file_storage_service),
     chatbot_queue: RedisQueueService = Depends(get_chatbot_queue),
@@ -67,11 +65,9 @@ async def create_files(
             mimetype=file.content_type,
             file_path=file_url,
             file_type=file_type,
-            assessment_id=assessment_id,
-            framework_id=framework_id
         )
         file_response = await controller.create_file(
-            file_data, current_user.email, assessment_id, framework_id, kb_file_id=kb_file_id
+            file_data, current_user.email, kb_file_id=kb_file_id
         )
         file_responses.append(file_response)
     return file_responses
@@ -116,34 +112,6 @@ async def get_all_files(
     """Endpoint to retrieve all file records."""
     controller = FileController(db_service)
     return await controller.get_all_files(file_type, entity_type, entity_id)
-
-
-@router.get(
-    "/by-assessment/{assessment_id}",
-    response_model=List[FileResponse],
-    status_code=status.HTTP_200_OK,
-    summary="Retrieve evidence files for a specific assessment",
-    description=(
-        "Returns all evidence files linked to the given assessment via the "
-        "assessment_files table. Deduplicated by file id; only active mappings "
-        "and files of file_type='evidence' are returned."
-    ),
-    dependencies=[Depends(has_permission([Permission.FILE_READ]))]
-)
-async def get_evidence_files_by_assessment(
-    assessment_id: int,
-    current_user: CurrentUserDep,
-    page_number: int = 1,
-    page_size: int = 1000,
-    db_service: DatabaseService = Depends(get_db_service),
-) -> List[FileResponse]:
-    """Endpoint to retrieve evidence files for a given assessment."""
-    controller = FileController(db_service)
-    return await controller.get_evidence_files_by_assessment(
-        assessment_id=assessment_id,
-        page_number=page_number,
-        page_size=page_size,
-    )
 
 
 @router.delete(

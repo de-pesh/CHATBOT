@@ -168,11 +168,11 @@ the model repo.
 ## Layout
 
 ```
-main-service/app/            the REST API: auth, users, roles, files, frameworks
-  routers/                   one module per resource, mounted by main.py
-  controllers/               request handling
+main-service/app/            the admin API: auth, file upload, KB management
+  routers/                   auth.py, file.py, kb.py - mounted by main.py
+  controllers/               auth, error, file
   services/                  mysql, redis, azure blob
-  models/                    pydantic schemas, grouped 5 ways
+  models/                    auth.py, common.py, files.py
   security.py                JWT, bcrypt, the Permission enum
   stored_procedures.py       every MySQL stored-proc call
   observability.py           request-ID middleware, filter and logging setup
@@ -187,6 +187,36 @@ FE/                          React SPA served under /chatbot/
 `app/observability.py` is named in `app/logging.yaml` by dotted path
 (`app.observability.RequestIDFilter`), so renaming it means editing that YAML
 too - nothing imports the filter directly.
+
+## API surface
+
+main-service is down to what the chatbot needs. 35 paths -> 9.
+
+```
+GET    /health
+POST   /auth/authenticate           |
+POST   /auth/change-password        |  see the warning below
+POST   /auth/re-authenticate        |
+POST   /files/                      upload -> Azure Blob + push to the KB
+GET    /files/  /files/{id}         file records
+DELETE /files/{id}                  record + blob + KB document
+GET    /kb/                         list KB documents (proxies :8003/kb)
+DELETE /kb/{kb_file_id}             remove one KB document
+```
+
+Removed: `/frameworks`, `/organizations`, `/permissions`, `/roles`,
+`/role-permissions`, `/user`, `/user-role-assignments` - the compliance and
+RBAC admin domain, 46 of the 58 method+path combinations. The frontend never
+called any of it; it only calls `:8003/chat` and `:8003/chat/history`.
+
+> **Auth does not currently work, and is switched off.** `DISABLE_AUTH=True` in
+> both `docker-compose.yml` and `main-service/.env`, so every endpoint above is
+> reachable with no token. It could not work as things stand anyway: there is no
+> `users` table, and `filter_users`, `upsert_user` and `get_user_permissions`
+> are called by `auth_controller` and `dependencies.has_permission` but are not
+> defined in any `.sql` file in this repo. `GET /user/` used to return 500 for
+> exactly that reason. Before exposing this service, add the user schema and set
+> `DISABLE_AUTH=False`.
 
 ## Ports
 

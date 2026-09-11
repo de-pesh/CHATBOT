@@ -179,18 +179,14 @@ class FileController:
         self,
         file_data: FileCreate,
         user_id: str,
-        assessment_id: Optional[int] = None,
-        framework_id: Optional[int] = None,
         kb_file_id: Optional[str] = None,
     ) -> FileInDB:
         """
-        Creates a new file record and links it to an assessment or framework if specified.
+        Creates a new file record.
 
         Args:
             file_data (FileCreate): The data for the new file record.
             user_id (str): The ID of the user creating the file record.
-            assessment_id (Optional[int]): The ID of the assessment to link the file to.
-            framework_id (Optional[int]): The ID of the framework to link the file to.
             kb_file_id (Optional[str]): The knowledge-base document ID, if this file
                 was already pushed into the chatbot's knowledge base.
 
@@ -227,78 +223,12 @@ class FileController:
             # Fetch the full file record using the new ID
             created_file = await self.get_file_by_id(new_file_id)
 
-            # Link the file to the appropriate entity
-            await self.link_file_to_entity(
-                file_id=created_file.id,
-                user_id=user_id,
-                file_data = created_file,
-                assessment_id=assessment_id,
-                framework_id=framework_id,
-            )
-
             return created_file
         except Exception as e:
             logger.exception(f"Error creating file record: {e}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"An error occurred: {e}",
-            )
-
-
-    async def link_file_to_entity(
-        self,
-        file_id: int,
-        user_id: str,
-        file_data: dict,
-        assessment_id: Optional[int] = None,
-        framework_id: Optional[int] = None,
-    ) -> None:
-        """
-        Links a file to either an assessment or the latest version of a framework.
-
-        Args:
-            file_id (int): The ID of the file to link.
-            user_id (str): The ID of the user performing the action.
-            assessment_id (Optional[int]): The ID of the assessment.
-            framework_id (Optional[int]): The ID of the framework.
-        """
-        if framework_id:
-            # Get the latest version of the framework
-            versions = await self.db_service.call_procedure(
-                StoredProcedures.FILTER_VERSIONS,
-                [None, framework_id, None, None, True, 1, 1],  # Assuming the latest is what we want
-            )
-            if not versions or not versions[0]:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"No active versions found for framework {framework_id}",
-                )
-            latest_version_id = versions[0][0]["id"]
-
-            # Link the file to the latest version
-            await self.db_service.call_procedure(
-                StoredProcedures.UPSERT_VERSION_FILE,
-                [None, latest_version_id, file_id, True, user_id],
-            )
-            if self.redis_service:
-                message = {
-                    "file_id": file_id,
-                    "name": file_data.name,
-                    "mimetype":file_data.mimetype,
-                    "file_path":file_data.file_path,
-                    "framework_id": framework_id,
-                    "latest_version_id": latest_version_id,
-                    "user_id": user_id,
-                    "action_type": "create"
-                }
-                await self.redis_service.send_message(message)
-                logger.info(f"Sent framework file info to Redis queue for file_id: {file_id}")
-
-        elif assessment_id:
-            # Link the file to the assessment
-            await self.db_service.call_procedure(
-                StoredProcedures.UPSERT_ASSESSMENT_FILE,
-                [None, assessment_id, file_id, True, user_id],
             )
 
 
@@ -363,60 +293,6 @@ class FileController:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"An error occurred: {e}")
 
 
-    async def get_evidence_files_by_assessment(
-        self,
-        assessment_id: int,
-        page_number: int = 1,
-        page_size: int = 1000,
-    ) -> List[FileInDB]:
-        """
-        Retrieves all evidence files linked to a given assessment via assessment_files.
-
-        Returns deduplicated file records (by file_id), only those with file_type=evidence
-        and is_active=True on both the mapping and the file.
-        """
-        try:
-            mapping_results = await self.db_service.call_procedure(
-                StoredProcedures.FILTER_ASSESSMENT_FILES,
-                [None, assessment_id, None, True, page_number, page_size],
-            )
-            mapping_rows = mapping_results[0] if mapping_results and mapping_results[0] else []
-            if not mapping_rows:
-                return []
-
-            # Dedupe file_ids while preserving order (latest mapping wins)
-            seen_file_ids: set = set()
-            ordered_file_ids: List[int] = []
-            for row in mapping_rows:
-                fid = row.get("file_id")
-                if fid is None or fid in seen_file_ids:
-                    continue
-                seen_file_ids.add(fid)
-                ordered_file_ids.append(int(fid))
-
-            files: List[FileInDB] = []
-            for fid in ordered_file_ids:
-                file_results = await self.db_service.call_procedure(
-                    StoredProcedures.FILTER_FILES,
-                    [fid, None, None, None, True, 1, 1],
-                )
-                if not file_results or not file_results[0]:
-                    continue
-                file_record = FileInDB(**file_results[0][0])
-                if file_record.file_type == FileType.EVIDENCE:
-                    files.append(file_record)
-
-            return files
-        except Exception as e:
-            logger.exception(
-                f"Error retrieving evidence files for assessment {assessment_id}: {e}"
-            )
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"An error occurred while retrieving evidence files: {e}",
-            )
-
-
     async def update_file_parsed_path(self, file_id: int, parsed_path: str, user_id: str) -> FileInDB:
         """Updates the parsed_path for an existing file record."""
         try:
@@ -467,33 +343,6 @@ class FileController:
         """
         try:
             file_details = await self.get_file_by_id(file_id)
-            if file_details.file_type == FileType.FRAMEWORK:
-                # get the id for the version file mapping, if one exists (a file
-                # can be unlinked, e.g. it was uploaded without a framework_id)
-                version_file_data = await self.db_service.call_procedure(
-                    StoredProcedures.FILTER_VERSION_FILES,
-                    [None, None, file_id, True, 1, 1]
-                )
-                if version_file_data and version_file_data[0]:
-                    version_file_id = version_file_data[0][0]["id"]
-                    await self.db_service.call_procedure(
-                        StoredProcedures.DELETE_VERSION_FILE,
-                        [version_file_id, user_id]
-                    )
-
-            if file_details.file_type == FileType.EVIDENCE:
-                # get the id for the assessment file mapping, if one exists (a file
-                # can be unlinked, e.g. it was uploaded without an assessment_id)
-                assessment_file_data = await self.db_service.call_procedure(
-                    StoredProcedures.FILTER_ASSESSMENT_FILES,
-                    [None, None, file_id, True, 1, 1]
-                )
-                if assessment_file_data and assessment_file_data[0]:
-                    assessment_file_id = assessment_file_data[0][0]["id"]
-                    await self.db_service.call_procedure(
-                        StoredProcedures.DELETE_ASSESSMENT_FILE,
-                        [assessment_file_id, user_id]
-                    )
 
             await self.db_service.call_procedure(
                 StoredProcedures.DELETE_FILE,
