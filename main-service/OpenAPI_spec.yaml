@@ -1,0 +1,3584 @@
+openapi: 3.0.0
+info:
+  title: CCPM Main Service
+  version: 1.0.0
+  description: ''
+servers:
+  - url: '{{baseUrl}}'
+paths:
+  /assessments/{assessment_id}:
+    parameters:
+      - name: assessment_id
+        in: path
+        required: true
+        description: '(Required) '
+        example: '7599'
+        schema:
+          type: integer
+    get:
+      summary: Retrieve an assessment by ID
+      parameters:
+        - name: Accept
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+      responses:
+        '200':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  frameworks:
+                    type: array
+                    items:
+                      type: integer
+                  id:
+                    type: integer
+                  created_on:
+                    type: string
+                    format: date-time
+                  created_by:
+                    type: string
+                  description:
+                    type: string
+                  status:
+                    type: string
+                  is_active:
+                    type: boolean
+                  updated_on:
+                    type: string
+                    format: date-time
+                  updated_by:
+                    type: string
+        '422':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        loc:
+                          type: array
+                          items:
+                            type: string
+                        msg:
+                          type: string
+                        type:
+                          type: string
+    patch:
+      summary: Update an existing assessment
+      parameters:
+        - name: Content-Type
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+        - name: Accept
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+      responses:
+        '200':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  frameworks:
+                    type: array
+                    items:
+                      type: integer
+                  id:
+                    type: integer
+                  created_on:
+                    type: string
+                    format: date-time
+                  created_by:
+                    type: string
+                  description:
+                    type: string
+                  status:
+                    type: string
+                  is_active:
+                    type: boolean
+                  updated_on:
+                    type: string
+                    format: date-time
+                  updated_by:
+                    type: string
+        '422':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        loc:
+                          type: array
+                          items:
+                            type: string
+                        msg:
+                          type: string
+                        type:
+                          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                status:
+                  type: string
+    delete:
+      summary: Delete an assessment
+      parameters:
+        - name: Accept
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+      responses:
+        '204':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: text/plain
+          description: Successful Response
+        '422':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        loc:
+                          type: array
+                          items:
+                            type: string
+                        msg:
+                          type: string
+                        type:
+                          type: string
+  /assessments/:
+    parameters: []
+    post:
+      summary: Create a new assessment
+      parameters:
+        - name: Content-Type
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+        - name: Accept
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+      responses:
+        '201':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  frameworks:
+                    type: array
+                    items:
+                      type: integer
+                  id:
+                    type: integer
+                  created_on:
+                    type: string
+                    format: date-time
+                  created_by:
+                    type: string
+                  description:
+                    type: string
+                  status:
+                    type: string
+                  is_active:
+                    type: boolean
+                  updated_on:
+                    type: string
+                    format: date-time
+                  updated_by:
+                    type: string
+        '422':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        loc:
+                          type: array
+                          items:
+                            type: string
+                        msg:
+                          type: string
+                        type:
+                          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                frameworks:
+                  type: array
+                  items:
+                    type: integer
+                description:
+                  type: string
+    get:
+      summary: Retrieve all assessments
+      parameters:
+        - name: page_number
+          in: query
+          required: false
+          description: Page number to retrieve
+          example: '1'
+          schema:
+            type: integer
+        - name: page_size
+          in: query
+          required: false
+          description: Number of assessments per page
+          example: '10'
+          schema:
+            type: integer
+        - name: Accept
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+      responses:
+        '200':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                    frameworks:
+                      type: array
+                      items:
+                        type: integer
+                    id:
+                      type: integer
+                    created_on:
+                      type: string
+                      format: date-time
+                    created_by:
+                      type: string
+                    description:
+                      type: string
+                    status:
+                      type: string
+                    is_active:
+                      type: boolean
+                    updated_on:
+                      type: string
+                      format: date-time
+                    updated_by:
+                      type: string
+        '422':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        loc:
+                          type: array
+                          items:
+                            type: string
+                        msg:
+                          type: string
+                        type:
+                          type: string
+  /assets/{asset_id}:
+    parameters:
+      - name: asset_id
+        in: path
+        required: true
+        description: '(Required) '
+        example: '7928'
+        schema:
+          type: integer
+    get:
+      summary: Retrieve an asset by ID
+      parameters:
+        - name: Accept
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+      responses:
+        '200':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  asset_type_id:
+                    type: integer
+                  id:
+                    type: integer
+                  created_on:
+                    type: string
+                    format: date-time
+                  created_by:
+                    type: string
+                  description:
+                    type: string
+                  is_active:
+                    type: boolean
+                  updated_on:
+                    type: string
+                    format: date-time
+                  updated_by:
+                    type: string
+        '422':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        loc:
+                          type: array
+                          items:
+                            type: string
+                        msg:
+                          type: string
+                        type:
+                          type: string
+    patch:
+      summary: Update an existing asset
+      parameters:
+        - name: Content-Type
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+        - name: Accept
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+      responses:
+        '200':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  asset_type_id:
+                    type: integer
+                  id:
+                    type: integer
+                  created_on:
+                    type: string
+                    format: date-time
+                  created_by:
+                    type: string
+                  description:
+                    type: string
+                  is_active:
+                    type: boolean
+                  updated_on:
+                    type: string
+                    format: date-time
+                  updated_by:
+                    type: string
+        '422':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        loc:
+                          type: array
+                          items:
+                            type: string
+                        msg:
+                          type: string
+                        type:
+                          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                asset_type_id:
+                  type: integer
+    delete:
+      summary: Delete an asset
+      parameters:
+        - name: Accept
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+      responses:
+        '204':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: text/plain
+          description: Successful Response
+        '422':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        loc:
+                          type: array
+                          items:
+                            type: string
+                        msg:
+                          type: string
+                        type:
+                          type: string
+  /assets/:
+    parameters: []
+    post:
+      summary: Create a new asset
+      parameters:
+        - name: Content-Type
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+        - name: Accept
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+      responses:
+        '201':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  asset_type_id:
+                    type: integer
+                  id:
+                    type: integer
+                  created_on:
+                    type: string
+                    format: date-time
+                  created_by:
+                    type: string
+                  description:
+                    type: string
+                  is_active:
+                    type: boolean
+                  updated_on:
+                    type: string
+                    format: date-time
+                  updated_by:
+                    type: string
+        '422':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        loc:
+                          type: array
+                          items:
+                            type: string
+                        msg:
+                          type: string
+                        type:
+                          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                asset_type_id:
+                  type: integer
+                description:
+                  type: string
+    get:
+      summary: Retrieve all assets
+      parameters:
+        - name: asset_type_id
+          in: query
+          required: false
+          example: '7917'
+          schema:
+            type: integer
+        - name: page_number
+          in: query
+          required: false
+          example: '7917'
+          schema:
+            type: integer
+        - name: page_size
+          in: query
+          required: false
+          example: '7917'
+          schema:
+            type: integer
+        - name: Accept
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+      responses:
+        '200':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                    asset_type_id:
+                      type: integer
+                    id:
+                      type: integer
+                    created_on:
+                      type: string
+                      format: date-time
+                    created_by:
+                      type: string
+                    description:
+                      type: string
+                    is_active:
+                      type: boolean
+                    updated_on:
+                      type: string
+                      format: date-time
+                    updated_by:
+                      type: string
+        '422':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        loc:
+                          type: array
+                          items:
+                            type: string
+                        msg:
+                          type: string
+                        type:
+                          type: string
+  /change-requests/{change_request_id}/changes/{change_id}:
+    parameters:
+      - name: change_id
+        in: path
+        required: true
+        description: '(Required) '
+        example: '8034'
+        schema:
+          type: integer
+    patch:
+      summary: Update an existing change
+      parameters:
+        - name: Content-Type
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+        - name: Accept
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+      responses:
+        '200':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  change_request_id:
+                    type: integer
+                  status:
+                    type: string
+                  label_id:
+                    type: string
+                  action_type:
+                    type: string
+                  id:
+                    type: integer
+                  is_active:
+                    type: boolean
+                  created_on:
+                    type: string
+                    format: date-time
+                  created_by:
+                    type: string
+                  remarks:
+                    type: string
+                  updated_on:
+                    type: string
+                    format: date-time
+                  updated_by:
+                    type: string
+        '422':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        loc:
+                          type: array
+                          items:
+                            type: string
+                        msg:
+                          type: string
+                        type:
+                          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                remarks:
+                  type: string
+    delete:
+      summary: Delete a change
+      parameters:
+        - name: Accept
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+      responses:
+        '204':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: text/plain
+          description: Successful Response
+        '422':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        loc:
+                          type: array
+                          items:
+                            type: string
+                        msg:
+                          type: string
+                        type:
+                          type: string
+  /change-requests/{change_request_id}/changes:
+    parameters:
+      - name: change_request_id
+        in: path
+        required: true
+        description: '(Required) '
+        example: '9531'
+        schema:
+          type: integer
+    post:
+      summary: Add a new change to a change request
+      parameters:
+        - name: Content-Type
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+        - name: Accept
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+      responses:
+        '201':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  change_request_id:
+                    type: integer
+                  status:
+                    type: string
+                  label_id:
+                    type: string
+                  action_type:
+                    type: string
+                  id:
+                    type: integer
+                  is_active:
+                    type: boolean
+                  created_on:
+                    type: string
+                    format: date-time
+                  created_by:
+                    type: string
+                  remarks:
+                    type: string
+                  updated_on:
+                    type: string
+                    format: date-time
+                  updated_by:
+                    type: string
+        '422':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        loc:
+                          type: array
+                          items:
+                            type: string
+                        msg:
+                          type: string
+                        type:
+                          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                action_type:
+                  type: string
+                  format: color
+                node_data:
+                  type: object
+                  properties:
+                    label_id:
+                      type: string
+                    name:
+                      type: string
+                    item_type:
+                      type: integer
+                    node_id:
+                      type: string
+                      format: uri
+                    description:
+                      type: string
+                    parent_node_id:
+                      type: string
+                      format: uri
+                remarks:
+                  type: string
+  /change-requests/{change_request_id}:
+    parameters:
+      - name: change_request_id
+        in: path
+        required: true
+        description: '(Required) '
+        example: '9531'
+        schema:
+          type: integer
+    get:
+      summary: Retrieve a change request by ID
+      parameters:
+        - name: Accept
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+      responses:
+        '200':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  framework_id:
+                    type: integer
+                  id:
+                    type: integer
+                  created_on:
+                    type: string
+                    format: date-time
+                  created_by:
+                    type: string
+                  status:
+                    type: string
+                  is_active:
+                    type: boolean
+                  updated_on:
+                    type: string
+                    format: date-time
+                  updated_by:
+                    type: string
+        '422':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        loc:
+                          type: array
+                          items:
+                            type: string
+                        msg:
+                          type: string
+                        type:
+                          type: string
+    patch:
+      summary: Update an existing change request
+      parameters:
+        - name: Content-Type
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+        - name: Accept
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+      responses:
+        '200':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  framework_id:
+                    type: integer
+                  id:
+                    type: integer
+                  created_on:
+                    type: string
+                    format: date-time
+                  created_by:
+                    type: string
+                  status:
+                    type: string
+                  is_active:
+                    type: boolean
+                  updated_on:
+                    type: string
+                    format: date-time
+                  updated_by:
+                    type: string
+        '422':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        loc:
+                          type: array
+                          items:
+                            type: string
+                        msg:
+                          type: string
+                        type:
+                          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                updated_by:
+                  type: string
+                framework_id:
+                  type: integer
+                status:
+                  type: string
+                is_active:
+                  type: boolean
+  /change-requests/:
+    parameters: []
+    get:
+      summary: Retrieve all change requests
+      parameters:
+        - name: page_number
+          in: query
+          required: false
+          description: Page number to retrieve
+          example: '1'
+          schema:
+            type: integer
+        - name: page_size
+          in: query
+          required: false
+          description: Number of change requests per page
+          example: '10'
+          schema:
+            type: integer
+        - name: Accept
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+      responses:
+        '200':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    framework_id:
+                      type: integer
+                    id:
+                      type: integer
+                    created_on:
+                      type: string
+                      format: date-time
+                    created_by:
+                      type: string
+                    status:
+                      type: string
+                    is_active:
+                      type: boolean
+                    updated_on:
+                      type: string
+                      format: date-time
+                    updated_by:
+                      type: string
+        '422':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        loc:
+                          type: array
+                          items:
+                            type: string
+                        msg:
+                          type: string
+                        type:
+                          type: string
+  /files/{file_id}:
+    parameters:
+      - name: file_id
+        in: path
+        required: true
+        description: '(Required) '
+        example: '7342'
+        schema:
+          type: integer
+    get:
+      summary: Download a file by ID
+      parameters:
+        - name: Accept
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+      responses:
+        '200':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: text/plain
+          description: Successful Response
+        '422':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        loc:
+                          type: array
+                          items:
+                            type: string
+                        msg:
+                          type: string
+                        type:
+                          type: string
+    delete:
+      summary: Delete a file record
+      parameters:
+        - name: Accept
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+      responses:
+        '200':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+        '422':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        loc:
+                          type: array
+                          items:
+                            type: string
+                        msg:
+                          type: string
+                        type:
+                          type: string
+  /files/:
+    parameters: []
+    post:
+      summary: Upload files and create file records
+      parameters:
+        - name: file_type
+          in: query
+          required: false
+          example: framework
+          schema:
+            type: string
+        - name: assessment_id
+          in: query
+          required: false
+          example: '7917'
+          schema:
+            type: integer
+        - name: framework_id
+          in: query
+          required: false
+          example: '7917'
+          schema:
+            type: integer
+        - name: Content-Type
+          in: header
+          required: false
+          example: multipart/form-data
+          schema:
+            type: string
+        - name: Accept
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+      responses:
+        '201':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                    mimetype:
+                      type: string
+                    file_path:
+                      type: string
+                    file_type:
+                      type: string
+                    id:
+                      type: integer
+                    created_on:
+                      type: string
+                      format: date-time
+                    created_by:
+                      type: string
+                    parsed_path:
+                      type: string
+                    is_active:
+                      type: boolean
+                    updated_on:
+                      type: string
+                      format: date-time
+                    updated_by:
+                      type: string
+        '422':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        loc:
+                          type: array
+                          items:
+                            type: string
+                        msg:
+                          type: string
+                        type:
+                          type: string
+    get:
+      summary: Retrieve all file records
+      parameters:
+        - name: entity_type
+          in: query
+          required: false
+          example: evidence
+          schema:
+            type: string
+        - name: entity_id
+          in: query
+          required: false
+          example: '7917'
+          schema:
+            type: integer
+        - name: Accept
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+      responses:
+        '200':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                    mimetype:
+                      type: string
+                    file_path:
+                      type: string
+                    file_type:
+                      type: string
+                    id:
+                      type: integer
+                    created_on:
+                      type: string
+                      format: date-time
+                    created_by:
+                      type: string
+                    parsed_path:
+                      type: string
+                    is_active:
+                      type: boolean
+                    updated_on:
+                      type: string
+                      format: date-time
+                    updated_by:
+                      type: string
+        '422':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        loc:
+                          type: array
+                          items:
+                            type: string
+                        msg:
+                          type: string
+                        type:
+                          type: string
+  /frameworks/{framework_id}:
+    parameters:
+      - name: framework_id
+        in: path
+        required: true
+        description: '(Required) '
+        example: '6848'
+        schema:
+          type: integer
+    get:
+      summary: Retrieve a framework by ID
+      parameters:
+        - name: Accept
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+      responses:
+        '200':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  id:
+                    type: integer
+                  created_on:
+                    type: string
+                    format: date-time
+                  created_by:
+                    type: string
+                  description:
+                    type: string
+                  is_active:
+                    type: boolean
+                  updated_on:
+                    type: string
+                    format: date-time
+                  updated_by:
+                    type: string
+        '422':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        loc:
+                          type: array
+                          items:
+                            type: string
+                        msg:
+                          type: string
+                        type:
+                          type: string
+    patch:
+      summary: Update an existing framework
+      parameters:
+        - name: Content-Type
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+        - name: Accept
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+      responses:
+        '200':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  id:
+                    type: integer
+                  created_on:
+                    type: string
+                    format: date-time
+                  created_by:
+                    type: string
+                  description:
+                    type: string
+                  is_active:
+                    type: boolean
+                  updated_on:
+                    type: string
+                    format: date-time
+                  updated_by:
+                    type: string
+        '422':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        loc:
+                          type: array
+                          items:
+                            type: string
+                        msg:
+                          type: string
+                        type:
+                          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                configurations:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      description:
+                        type: string
+                      parent_id:
+                        type: integer
+                      is_active:
+                        type: boolean
+                      id:
+                        type: integer
+    delete:
+      summary: Delete a framework
+      parameters:
+        - name: Accept
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+      responses:
+        '204':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: text/plain
+          description: Successful Response
+        '422':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        loc:
+                          type: array
+                          items:
+                            type: string
+                        msg:
+                          type: string
+                        type:
+                          type: string
+  /frameworks/{framework_id}/configurations:
+    parameters:
+      - name: framework_id
+        in: path
+        required: true
+        description: '(Required) '
+        example: '6848'
+        schema:
+          type: integer
+    get:
+      summary: Retrieve all configurations for a framework
+      parameters:
+        - name: Accept
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+      responses:
+        '200':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                    id:
+                      type: integer
+                    created_on:
+                      type: string
+                      format: date-time
+                    created_by:
+                      type: string
+                    description:
+                      type: string
+                    is_active:
+                      type: boolean
+                    parent_id:
+                      type: integer
+                    updated_on:
+                      type: string
+                      format: date-time
+                    updated_by:
+                      type: string
+                    parent_name:
+                      type: string
+        '422':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        loc:
+                          type: array
+                          items:
+                            type: string
+                        msg:
+                          type: string
+                        type:
+                          type: string
+  /frameworks/{framework_id}/versions:
+    parameters:
+      - name: framework_id
+        in: path
+        required: true
+        description: '(Required) '
+        example: '6848'
+        schema:
+          type: integer
+    get:
+      summary: Retrieve all versions for a framework
+      parameters:
+        - name: Accept
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+      responses:
+        '200':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    framework_id:
+                      type: integer
+                    number:
+                      type: integer
+                    id:
+                      type: integer
+                    created_on:
+                      type: string
+                      format: date-time
+                    created_by:
+                      type: string
+                    change_id:
+                      type: integer
+                    is_active:
+                      type: boolean
+                    updated_on:
+                      type: string
+                      format: date-time
+                    updated_by:
+                      type: string
+        '422':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        loc:
+                          type: array
+                          items:
+                            type: string
+                        msg:
+                          type: string
+                        type:
+                          type: string
+  /frameworks/:
+    parameters: []
+    post:
+      summary: Create a new framework
+      parameters:
+        - name: Content-Type
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+        - name: Accept
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+      responses:
+        '201':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  id:
+                    type: integer
+                  created_on:
+                    type: string
+                    format: date-time
+                  created_by:
+                    type: string
+                  description:
+                    type: string
+                  is_active:
+                    type: boolean
+                  updated_on:
+                    type: string
+                    format: date-time
+                  updated_by:
+                    type: string
+        '422':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        loc:
+                          type: array
+                          items:
+                            type: string
+                        msg:
+                          type: string
+                        type:
+                          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                configurations:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      description:
+                        type: string
+                      is_active:
+                        type: boolean
+                      parent_name:
+                        type: string
+    get:
+      summary: Retrieve all frameworks
+      parameters:
+        - name: page_number
+          in: query
+          required: false
+          description: Page number to retrieve
+          example: '1'
+          schema:
+            type: integer
+        - name: page_size
+          in: query
+          required: false
+          description: Number of frameworks per page
+          example: '10'
+          schema:
+            type: integer
+        - name: Accept
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+      responses:
+        '200':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                    id:
+                      type: integer
+                    created_on:
+                      type: string
+                      format: date-time
+                    created_by:
+                      type: string
+                    description:
+                      type: string
+                    is_active:
+                      type: boolean
+                    updated_on:
+                      type: string
+                      format: date-time
+                    updated_by:
+                      type: string
+        '422':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        loc:
+                          type: array
+                          items:
+                            type: string
+                        msg:
+                          type: string
+                        type:
+                          type: string
+  /organizations/{org_id}:
+    parameters:
+      - name: org_id
+        in: path
+        required: true
+        description: '(Required) '
+        example: '5241'
+        schema:
+          type: integer
+    get:
+      summary: Retrieve an organization by ID
+      parameters:
+        - name: Accept
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+      responses:
+        '200':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  id:
+                    type: integer
+                  created_on:
+                    type: string
+                    format: date-time
+                  created_by:
+                    type: string
+                  description:
+                    type: string
+                  is_active:
+                    type: boolean
+                  updated_on:
+                    type: string
+                    format: date-time
+                  updated_by:
+                    type: string
+        '422':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        loc:
+                          type: array
+                          items:
+                            type: string
+                        msg:
+                          type: string
+                        type:
+                          type: string
+    patch:
+      summary: Update an existing organization
+      parameters:
+        - name: Content-Type
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+        - name: Accept
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+      responses:
+        '200':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  id:
+                    type: integer
+                  created_on:
+                    type: string
+                    format: date-time
+                  created_by:
+                    type: string
+                  description:
+                    type: string
+                  is_active:
+                    type: boolean
+                  updated_on:
+                    type: string
+                    format: date-time
+                  updated_by:
+                    type: string
+                  org_units:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        id:
+                          type: integer
+                        organization_id:
+                          type: integer
+                        created_on:
+                          type: string
+                          format: date-time
+                        created_by:
+                          type: string
+                        parent_id:
+                          type: integer
+                        is_active:
+                          type: boolean
+                        updated_on:
+                          type: string
+                          format: date-time
+                        updated_by:
+                          type: string
+        '422':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        loc:
+                          type: array
+                          items:
+                            type: string
+                        msg:
+                          type: string
+                        type:
+                          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                org_units:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      id:
+                        type: integer
+                      parent_name:
+                        type: string
+    delete:
+      summary: Delete an organization
+      parameters:
+        - name: Accept
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+      responses:
+        '204':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: text/plain
+          description: Successful Response
+        '422':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        loc:
+                          type: array
+                          items:
+                            type: string
+                        msg:
+                          type: string
+                        type:
+                          type: string
+  /organizations/{org_id}/units:
+    parameters:
+      - name: org_id
+        in: path
+        required: true
+        description: '(Required) '
+        example: '5241'
+        schema:
+          type: integer
+    get:
+      summary: Retrieve all organizational units for an organization
+      parameters:
+        - name: Accept
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+      responses:
+        '200':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                    id:
+                      type: integer
+                    organization_id:
+                      type: integer
+                    created_on:
+                      type: string
+                      format: date-time
+                    created_by:
+                      type: string
+                    parent_id:
+                      type: integer
+                    is_active:
+                      type: boolean
+                    updated_on:
+                      type: string
+                      format: date-time
+                    updated_by:
+                      type: string
+        '422':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        loc:
+                          type: array
+                          items:
+                            type: string
+                        msg:
+                          type: string
+                        type:
+                          type: string
+  /organizations/:
+    parameters: []
+    post:
+      summary: Create a new organization
+      parameters:
+        - name: Content-Type
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+        - name: Accept
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+      responses:
+        '201':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  id:
+                    type: integer
+                  created_on:
+                    type: string
+                    format: date-time
+                  created_by:
+                    type: string
+                  description:
+                    type: string
+                  is_active:
+                    type: boolean
+                  updated_on:
+                    type: string
+                    format: date-time
+                  updated_by:
+                    type: string
+                  org_units:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        id:
+                          type: integer
+                        organization_id:
+                          type: integer
+                        created_on:
+                          type: string
+                          format: date-time
+                        created_by:
+                          type: string
+                        parent_id:
+                          type: integer
+                        is_active:
+                          type: boolean
+                        updated_on:
+                          type: string
+                          format: date-time
+                        updated_by:
+                          type: string
+        '422':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        loc:
+                          type: array
+                          items:
+                            type: string
+                        msg:
+                          type: string
+                        type:
+                          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                org_units:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      parent_name:
+                        type: string
+    get:
+      summary: Retrieve all organizations
+      parameters:
+        - name: page_number
+          in: query
+          required: false
+          description: Page number to retrieve
+          example: '1'
+          schema:
+            type: integer
+        - name: page_size
+          in: query
+          required: false
+          description: Number of organizations per page
+          example: '10'
+          schema:
+            type: integer
+        - name: Accept
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+      responses:
+        '200':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                    id:
+                      type: integer
+                    created_on:
+                      type: string
+                      format: date-time
+                    created_by:
+                      type: string
+                    description:
+                      type: string
+                    is_active:
+                      type: boolean
+                    updated_on:
+                      type: string
+                      format: date-time
+                    updated_by:
+                      type: string
+        '422':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        loc:
+                          type: array
+                          items:
+                            type: string
+                        msg:
+                          type: string
+                        type:
+                          type: string
+  /asset-types/{asset_type_id}:
+    parameters:
+      - name: asset_type_id
+        in: path
+        required: true
+        description: '(Required) '
+        example: '7764'
+        schema:
+          type: integer
+    get:
+      summary: Retrieve an asset type by ID
+      parameters:
+        - name: Accept
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+      responses:
+        '200':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  organization_id:
+                    type: integer
+                  id:
+                    type: integer
+                  created_on:
+                    type: string
+                    format: date-time
+                  created_by:
+                    type: string
+                  description:
+                    type: string
+                  is_active:
+                    type: boolean
+                  updated_on:
+                    type: string
+                    format: date-time
+                  updated_by:
+                    type: string
+        '422':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        loc:
+                          type: array
+                          items:
+                            type: string
+                        msg:
+                          type: string
+                        type:
+                          type: string
+    patch:
+      summary: Update an existing asset type
+      parameters:
+        - name: Content-Type
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+        - name: Accept
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+      responses:
+        '200':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  organization_id:
+                    type: integer
+                  id:
+                    type: integer
+                  created_on:
+                    type: string
+                    format: date-time
+                  created_by:
+                    type: string
+                  description:
+                    type: string
+                  is_active:
+                    type: boolean
+                  updated_on:
+                    type: string
+                    format: date-time
+                  updated_by:
+                    type: string
+        '422':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        loc:
+                          type: array
+                          items:
+                            type: string
+                        msg:
+                          type: string
+                        type:
+                          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                organization_id:
+                  type: integer
+    delete:
+      summary: Delete an asset type
+      parameters:
+        - name: Accept
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+      responses:
+        '204':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: text/plain
+          description: Successful Response
+        '422':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        loc:
+                          type: array
+                          items:
+                            type: string
+                        msg:
+                          type: string
+                        type:
+                          type: string
+  /asset-types/:
+    parameters: []
+    post:
+      summary: Create a new asset type
+      parameters:
+        - name: Content-Type
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+        - name: Accept
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+      responses:
+        '201':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  organization_id:
+                    type: integer
+                  id:
+                    type: integer
+                  created_on:
+                    type: string
+                    format: date-time
+                  created_by:
+                    type: string
+                  description:
+                    type: string
+                  is_active:
+                    type: boolean
+                  updated_on:
+                    type: string
+                    format: date-time
+                  updated_by:
+                    type: string
+        '422':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        loc:
+                          type: array
+                          items:
+                            type: string
+                        msg:
+                          type: string
+                        type:
+                          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                organization_id:
+                  type: integer
+                description:
+                  type: string
+    get:
+      summary: Retrieve all asset types
+      parameters:
+        - name: page_number
+          in: query
+          required: false
+          example: '7917'
+          schema:
+            type: integer
+        - name: page_size
+          in: query
+          required: false
+          example: '7917'
+          schema:
+            type: integer
+        - name: Accept
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+      responses:
+        '200':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                    organization_id:
+                      type: integer
+                    id:
+                      type: integer
+                    created_on:
+                      type: string
+                      format: date-time
+                    created_by:
+                      type: string
+                    description:
+                      type: string
+                    is_active:
+                      type: boolean
+                    updated_on:
+                      type: string
+                      format: date-time
+                    updated_by:
+                      type: string
+        '422':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        loc:
+                          type: array
+                          items:
+                            type: string
+                        msg:
+                          type: string
+                        type:
+                          type: string
+  /org-unit-values/{org_id}/hierarchy:
+    parameters:
+      - name: org_id
+        in: path
+        required: true
+        description: '(Required) '
+        example: '5241'
+        schema:
+          type: integer
+    get:
+      summary: Get the complete organizational unit value hierarchy for an organization
+      parameters:
+        - name: Accept
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+      responses:
+        '200':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  org_id:
+                    type: integer
+                  units:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        unit_id:
+                          type: integer
+                        values:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              value:
+                                type: string
+                              children:
+                                type: array
+                                items:
+                                  type: object
+                                  properties:
+                                    value:
+                                      type: string
+                        unit_name:
+                          type: string
+        '422':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        loc:
+                          type: array
+                          items:
+                            type: string
+                        msg:
+                          type: string
+                        type:
+                          type: string
+  /org-unit-values/create-hierarchy:
+    parameters: []
+    post:
+      summary: Create a hierarchy of organizational unit values
+      parameters:
+        - name: Content-Type
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+        - name: Accept
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+      responses:
+        '201':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+        '422':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        loc:
+                          type: array
+                          items:
+                            type: string
+                        msg:
+                          type: string
+                        type:
+                          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                org_id:
+                  type: integer
+                units:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      unit_id:
+                        type: integer
+                      values:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            value:
+                              type: string
+                            children:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  value:
+                                    type: string
+                      unit_name:
+                        type: string
+  /org-settings/{org_settings_id}:
+    parameters:
+      - name: org_settings_id
+        in: path
+        required: true
+        description: '(Required) '
+        example: '9628'
+        schema:
+          type: integer
+    get:
+      summary: Get organization settings by ID
+      parameters:
+        - name: Accept
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+      responses:
+        '200':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  organization_id:
+                    type: integer
+                  reviewer_count:
+                    type: integer
+                  retry_count:
+                    type: integer
+                  id:
+                    type: integer
+                  created_on:
+                    type: string
+                    format: date-time
+                  created_by:
+                    type: string
+                  is_fixed_reviewer:
+                    type: boolean
+                  is_notification_required:
+                    type: boolean
+                  is_active:
+                    type: boolean
+                  updated_on:
+                    type: string
+                    format: date-time
+                  updated_by:
+                    type: string
+        '422':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        loc:
+                          type: array
+                          items:
+                            type: string
+                        msg:
+                          type: string
+                        type:
+                          type: string
+    patch:
+      summary: Update organization settings
+      parameters:
+        - name: Content-Type
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+        - name: Accept
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+      responses:
+        '200':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  organization_id:
+                    type: integer
+                  reviewer_count:
+                    type: integer
+                  retry_count:
+                    type: integer
+                  id:
+                    type: integer
+                  created_on:
+                    type: string
+                    format: date-time
+                  created_by:
+                    type: string
+                  is_fixed_reviewer:
+                    type: boolean
+                  is_notification_required:
+                    type: boolean
+                  is_active:
+                    type: boolean
+                  updated_on:
+                    type: string
+                    format: date-time
+                  updated_by:
+                    type: string
+        '422':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        loc:
+                          type: array
+                          items:
+                            type: string
+                        msg:
+                          type: string
+                        type:
+                          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reviewer_count:
+                  type: integer
+                retry_count:
+                  type: integer
+                is_fixed_reviewer:
+                  type: boolean
+                is_notification_required:
+                  type: boolean
+    delete:
+      summary: Delete organization settings
+      parameters:
+        - name: Accept
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+      responses:
+        '204':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: text/plain
+          description: Successful Response
+        '422':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        loc:
+                          type: array
+                          items:
+                            type: string
+                        msg:
+                          type: string
+                        type:
+                          type: string
+  /org-settings/:
+    parameters: []
+    post:
+      summary: Create new organization settings
+      parameters:
+        - name: Content-Type
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+        - name: Accept
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+      responses:
+        '201':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  organization_id:
+                    type: integer
+                  reviewer_count:
+                    type: integer
+                  retry_count:
+                    type: integer
+                  id:
+                    type: integer
+                  created_on:
+                    type: string
+                    format: date-time
+                  created_by:
+                    type: string
+                  is_fixed_reviewer:
+                    type: boolean
+                  is_notification_required:
+                    type: boolean
+                  is_active:
+                    type: boolean
+                  updated_on:
+                    type: string
+                    format: date-time
+                  updated_by:
+                    type: string
+        '422':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        loc:
+                          type: array
+                          items:
+                            type: string
+                        msg:
+                          type: string
+                        type:
+                          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                organization_id:
+                  type: integer
+                reviewer_count:
+                  type: integer
+                retry_count:
+                  type: integer
+                is_fixed_reviewer:
+                  type: boolean
+                is_notification_required:
+                  type: boolean
+  /org-settings/by-organization/{organization_id}:
+    parameters:
+      - name: organization_id
+        in: path
+        required: true
+        description: '(Required) '
+        example: '3399'
+        schema:
+          type: integer
+    get:
+      summary: Get organization settings by organization ID
+      parameters:
+        - name: Accept
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+      responses:
+        '200':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    organization_id:
+                      type: integer
+                    reviewer_count:
+                      type: integer
+                    retry_count:
+                      type: integer
+                    id:
+                      type: integer
+                    created_on:
+                      type: string
+                      format: date-time
+                    created_by:
+                      type: string
+                    is_fixed_reviewer:
+                      type: boolean
+                    is_notification_required:
+                      type: boolean
+                    is_active:
+                      type: boolean
+                    updated_on:
+                      type: string
+                      format: date-time
+                    updated_by:
+                      type: string
+        '422':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        loc:
+                          type: array
+                          items:
+                            type: string
+                        msg:
+                          type: string
+                        type:
+                          type: string
+  /:
+    parameters: []
+    get:
+      summary: Check Service Status
+      parameters:
+        - name: Accept
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+      responses:
+        '200':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+  /health:
+    parameters: []
+    get:
+      summary: Health Check
+      parameters:
+        - name: Accept
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+      responses:
+        '200':
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              example: application/json
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
