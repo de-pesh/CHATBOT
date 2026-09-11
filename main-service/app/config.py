@@ -21,23 +21,14 @@ class Settings(BaseSettings):
     and flexible way to manage application settings across different environments.
     """
     # --- Application Settings ---
-    APP_NAME: str = "CCPM Main Service"
-    ENVIRONMENT: str = Field("development", description="Application environment (e.g., development, staging, production)")
     DEBUG: bool = Field(False, description="Enable debug mode (e.g., for detailed error messages)")
-    LOG_LEVEL: str = Field("INFO", description="Minimum logging level (e.g., DEBUG, INFO, WARNING, ERROR, CRITICAL)")
     DISABLE_AUTH: bool = Field(
         False,
         description="TEMPORARY: when true, bypasses JWT validation and permission checks on all endpoints. Must be false in production.",
     )
-    RESULT_PENDING_TIMEOUT_MINUTES: int = Field(
-        30,
-        description="Timeout in minutes after which stale pending result rows are auto-resolved.",
-    )
-
     # --- Redis Settings ---
     REDIS_URL: str = Field(..., description="Redis connection URL")
     REDIS_PASSWORD: Optional[SecretStr] = Field(None, description="Redis password (optional)")
-    SESSION_EXPIRY_TIME: int = Field(3600, description="Session expiry time in seconds (default: 1 hour)")
     CHATBOT_QUEUE_NAME: str = Field(..., description="Name of the queue for chatbot tasks")
 
     # Database configuration
@@ -69,8 +60,6 @@ class Settings(BaseSettings):
     NEXTCLOUD_PASSWORD: Optional[SecretStr] = Field(None, description="Nextcloud password")
 
     # --- File Upload Settings ---
-    ALLOWED_FILE_TYPES: list[str] = Field(default_factory=lambda: ["pdf", "docx", "doc", "txt", "xlsx", "png", "jpeg", "jpg"], description="Allowed file types for upload.")
-
     # --- Chatbot Inferencing Service Settings ---
     CHATBOT_INFERENCING_SERVICE_URL: Optional[str] = Field(
         None,
@@ -83,9 +72,6 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(30, description="Access token expiration time in minutes.")
 
     # Prompt Settings
-    CORRESPONDING_QUESTION_PROMPT: str = Field(..., description="Prompt for corresponding question generation")
-    CRITERIA_GENERATION_PROMPT: str = Field(..., description="Prompt for criteria generation")
-
     # Pydantic model configuration
     # This nested class provides configuration for how Pydantic should load and handle settings.
     model_config = SettingsConfigDict(

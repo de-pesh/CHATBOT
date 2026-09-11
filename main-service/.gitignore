@@ -59,6 +59,12 @@ coverage.xml
 
 # Database stuff
 *.sql
+# ...except the schema this stack is built from. scripts/*.sql creates the
+# files and chatbot_* tables and every stored procedure the services call, and
+# docker-compose.yml mounts them into the MySQL container's init directory. The
+# blanket *.sql rule above is for dumps; without this exception a fresh clone
+# has no schema at all and the stack comes up with no tables.
+!scripts/*.sql
 
 # Django stuff:
 *.log

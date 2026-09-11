@@ -105,13 +105,11 @@ async def get_file_by_id(
 async def get_all_files(
     current_user: CurrentUserDep,
     file_type: Optional[FileType] = None,
-    entity_type: Optional[FileType] = None,
-    entity_id: Optional[int] = None,
     db_service: DatabaseService = Depends(get_db_service)
 ) -> List[FileResponse]:
     """Endpoint to retrieve all file records."""
     controller = FileController(db_service)
-    return await controller.get_all_files(file_type, entity_type, entity_id)
+    return await controller.get_all_files(file_type)
 
 
 @router.delete(

@@ -1,12 +1,12 @@
 """Files models.
 
-Merged from: file_models, version_models, label_mapping_wise_files_models, asset_models, asset_label_mappings_models, people_label_mappings_models.
+Merged from file_models and version_models. The asset, label-mapping and
+people-mapping models went with the assessment domain.
 """
 from datetime import datetime
 from enum import Enum
-from pydantic import AliasChoices, BaseModel, Field
-from pydantic import EmailStr
-from typing import List, Optional
+from pydantic import BaseModel, Field
+from typing import Optional
 
 
 # --- from file_models.py ---
@@ -28,13 +28,6 @@ class FileCreate(FileBase):
     framework_id: Optional[int] = Field(None, description="The ID of the framework to link the file to")
 
 # Model for updating an existing file (input)
-class FileUpdate(BaseModel):
-    name: Optional[str] = Field(None, min_length=1, max_length=255, description="Name of the file")
-    mimetype: Optional[str] = Field(None, max_length=100, description="MIME type of the file")
-    file_path: Optional[str] = Field(None, description="Path where the file is stored")
-    parsed_path: Optional[str] = Field(None, description="Path to the parsed version of the file, if applicable")
-    file_type: Optional[FileType] = Field(None, description="Type of the file (framework or evidence)")
-
 # Model for file data as stored in the database (includes DB-generated fields)
 class FileInDB(FileBase):
     id: int = Field(..., description="Unique identifier of the file")
@@ -80,11 +73,6 @@ class VersionInDB(VersionBase):
     class Config:
         from_attributes = True
 
-class VersionResponse(BaseModel):
-    total_count: int = Field(..., description="Total count of rows available in the database")
-    results: List[VersionInDB] = Field(..., description="List of all records fetched from the database")
-
-
 # --- from label_mapping_wise_files_models.py ---
 # app/models/evidence_mapping_models.py
 
@@ -92,42 +80,6 @@ class VersionResponse(BaseModel):
 # ==================================
 # Evidence Mapping Models
 # ==================================
-
-class EvidenceMappingsCreatePayload(BaseModel):
-    """
-    Payload for creating one or more mappings between evidence files and a single control.
-    All necessary foreign keys must be provided by the client.
-    """
-    assessment_id: int = Field(..., description="The ID of the assessment this mapping belongs to.")
-    assessment_label_mapping_id: int = Field(
-        ...,
-        validation_alias=AliasChoices("assessment_label_mapping_id", "assessment_label_id"),
-        description="The ID of the assessment label mapping (control mapping) to link files against."
-    )
-    file_ids: List[int] = Field(..., min_length=1, description="A list of unique evidence file IDs to map to the control.")
-
-class EvidenceMappingsDeletePayload(BaseModel):
-    """Payload for deleting one or more specific evidence-to-control mappings by their unique IDs."""
-    mapping_ids: List[int] = Field(..., min_length=1, description="A list of unique evidence mapping IDs (label_wise_files.id) to be deleted.")
-
-class EvidenceMappingResponse(BaseModel):
-    """
-    Complete response model for a single evidence-to-control link, including all DB fields.
-    This corresponds to a row in the `temp_label_mapping_wise_files` table.
-    """
-    id: int
-    assessment_id: int
-    assessment_label_mapping_id: int
-    file_id: int
-    is_active: bool
-    created_on: datetime
-    created_by: str
-    updated_on: Optional[datetime] = None
-    updated_by: Optional[str] = None
-
-    class Config:
-        from_attributes = True
-
 
 # --- from asset_models.py ---
 # Base model for common attributes
@@ -138,17 +90,7 @@ class AssetBase(BaseModel):
 
 
 # Model for creating a new asset (input)
-class AssetCreate(BaseModel):
-    data: List[AssetBase] = Field(..., description="List of Assets")
-
-
 # Model for updating an existing asset (input)
-class AssetUpdate(BaseModel):
-    name: Optional[str] = Field(None, min_length=1, max_length=255, description="Name of the asset")
-    description: Optional[str] = Field(None, decription="Description of the asset")
-    asset_type_id: Optional[int] = Field(None, description="ID of the asset type this asset belongs to")
-
-
 # Model for asset data as stored in the database (includes DB-generated fields)
 class AssetInDB(AssetBase):
     id: int = Field(..., description="Unique identifier of the asset")
@@ -163,11 +105,6 @@ class AssetInDB(AssetBase):
 
 
 # Model for API response (can be same as InDB or a subset)
-class AssetResponse(BaseModel):
-    total_count: int = Field(..., description="Total count of rows available in the database")
-    results: List[AssetInDB] = Field(..., description="List of all records fetched from the database")
-
-
 # Base model for common attributes
 class AssetTypeBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=255, description="Name of the asset type")
@@ -175,17 +112,7 @@ class AssetTypeBase(BaseModel):
 
 
 # Model for creating a new asset type (input)
-class AssetTypeCreate(BaseModel):
-    organization_id: int = Field(..., description="ID of the organization this asset type belongs to")
-    data: List[AssetTypeBase] = Field(..., description="List of asset types")
-
-
 # Model for updating an existing asset type (input)
-class AssetTypeUpdate(BaseModel):
-    name: Optional[str] = Field(None, min_length=1, max_length=255, description="Name of the asset type")
-    description: Optional[str] = Field(None, description="Description of the asset type")
-
-
 # Model for asset type data as stored in the database (includes DB-generated fields)
 class AssetTypeInDB(AssetTypeBase):
     id: int = Field(..., description="Unique identifier of the asset type")
@@ -201,47 +128,5 @@ class AssetTypeInDB(AssetTypeBase):
 
 
 # Model for API response (can be same as InDB or a subset)
-class AssetTypeResponse(BaseModel):
-    total_count: int = Field(..., description="Total count of rows available in the database")
-    results: List[AssetTypeInDB] = Field(..., description="List of all records fetched from the database")
-
-
 # --- from asset_label_mappings_models.py ---
-class AssetLabelMappingCreate(BaseModel):
-    """Payload to create one or more Asset-to-Control links."""
-    asset_ids: List[int] = Field(..., min_length=1, description="A list of unique asset IDs to tag to the control.")
-
-
-class AssetLabelMappingResponse(BaseModel):
-    """Response model for a single, successfully created Asset-to-Control link."""
-    id: int
-    asset_id: int
-    assessment_label_mapping_id: int
-    is_active: bool
-    created_on: datetime
-    created_by: str
-    updated_on: Optional[datetime] = None
-    updated_by: Optional[str] = None
-    
-    class Config:
-        from_attributes = True
-
-
 # --- from people_label_mappings_models.py ---
-class PeopleLabelMappingCreate(BaseModel):
-    """Payload to create one or more Person-to-Control links."""
-    emails: List[EmailStr] = Field(..., min_length=1, description="A list of user emails to tag to the control.")
-
-class PeopleLabelMappingResponse(BaseModel):
-    """Response model for a single, successfully created Person-to-Control link."""
-    id: int
-    email: EmailStr
-    assessment_label_mapping_id: int
-    is_active: bool
-    created_on: datetime
-    created_by: str
-    updated_on: Optional[datetime] = None
-    updated_by: Optional[str] = None
-
-    class Config:
-        from_attributes = True

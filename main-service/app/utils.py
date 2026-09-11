@@ -53,11 +53,3 @@ def stringify_json(data):
         return json.dumps(data, indent=2)
     except TypeError:
         return str(data)
-def parse_json(stringified_json: str) -> dict:
-    # Parses a JSON string into a dictionary.
-    if not stringified_json:
-        return {}
-    try:
-        return json.loads(stringified_json)
-    except (json.JSONDecodeError, TypeError):
-        return {}

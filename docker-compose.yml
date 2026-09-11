@@ -22,7 +22,6 @@
 # never reach the image, so everything a service needs is spelled out here.
 # ---------------------------------------------------------------------------
 x-infra-env: &infra-env
-  LOG_LEVEL: "INFO"
   REDIS_URL: "redis://redis:6379/0"
   DB_CONNECTION_STRING: "Server=mysql;UserID=root;Password=pass;Database=ccpm"
   MONGO_CONNECTION_STRING: "mongodb://mongo:27017/?directConnection=true"
@@ -30,7 +29,6 @@ x-infra-env: &infra-env
   DATABASE_SERVICE_URL: "http://main-service:8000"
   MAIN_SERVICE_URL: "http://main-service:8000"
   INDEXING_RPC_SERVER: "indexing-rpc-server:8001"
-  SESSION_EXPIRY_TIME: "3600"
   WORKER_BRPOP_TIMEOUT: "5"
   WORKER_ERROR_RETRY_DELAY: "5"
 
@@ -126,8 +124,6 @@ services:
       - ./main-service/scripts/files_knowledge_base_column.sql:/docker-entrypoint-initdb.d/02-files_knowledge_base_column.sql:ro
       - ./main-service/scripts/get_files_by_entity_procedure.sql:/docker-entrypoint-initdb.d/03-get_files_by_entity_procedure.sql:ro
       - ./main-service/scripts/chatbot_tables_and_procedures.sql:/docker-entrypoint-initdb.d/04-chatbot_tables_and_procedures.sql:ro
-      - ./main-service/scripts/kb_evidence_chain_tables_and_procedures.sql:/docker-entrypoint-initdb.d/05-kb_evidence_chain_tables_and_procedures.sql:ro
-      - ./main-service/scripts/versions_table_and_procedures.sql:/docker-entrypoint-initdb.d/06-versions_table_and_procedures.sql:ro
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-ppass"]
       interval: 10s
@@ -148,20 +144,15 @@ services:
     container_name: ccpm-main-service
     environment:
       <<: [*infra-env, *queue-env, *blob-env]
-      APP_NAME: "CCPM Main Service"
-      ENVIRONMENT: "development"
       DEBUG: "True"
       # Local only: skips JWT validation so the UI works without an auth server.
       DISABLE_AUTH: "True"
       STORAGE_TYPE: "azure"
       AZURE_STORAGE_SAS_EXPIRY_MINUTES: "30"
-      ALLOWED_FILE_TYPES: '["pdf", "docx", "doc", "txt", "xlsx", "png", "jpeg", "jpg"]'
       CHATBOT_INFERENCING_SERVICE_URL: "http://chatbot-inferencing-service:8000"
       SECRET_KEY: "ccpm-local-dev-secret-key"
       ALGORITHM: "HS256"
       ACCESS_TOKEN_EXPIRE_MINUTES: "30"
-      CORRESPONDING_QUESTION_PROMPT: "Generate corresponding questions for the provided input."
-      CRITERIA_GENERATION_PROMPT: "Generate evaluation criteria for the provided assessment context."
     ports:
       - "8000:8000"
     depends_on:

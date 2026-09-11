@@ -218,6 +218,29 @@ called any of it; it only calls `:8003/chat` and `:8003/chat/history`.
 > exactly that reason. Before exposing this service, add the user schema and set
 > `DISABLE_AUTH=False`.
 
+## Database
+
+Four scripts under `main-service/scripts/`, mounted into the MySQL container's
+init directory by `docker-compose.yml` and applied only on an empty volume
+(`docker compose down -v` re-applies them).
+
+```
+01 files_table_and_procedures.sql     files table; upsert_file, filter_files, delete_file
+02 files_knowledge_base_column.sql    adds kb_file_id; redefines the two procs
+03 get_files_by_entity_procedure.sql  get_files_by_entity
+04 chatbot_tables_and_procedures.sql  chatbot_session, chatbot_history + 5 procs
+```
+
+3 tables, 9 procedures - every one of them called. It was 13 tables and 36
+procedures; `kb_evidence_chain_tables_and_procedures.sql` (frameworks,
+assessments, change_requests, the label and asset mappings) and
+`versions_table_and_procedures.sql` went with those domains.
+
+> These files were **untracked** until recently: `main-service/.gitignore` had
+> a blanket `*.sql` rule, so the schema the whole stack depends on existed only
+> on one developer's disk. A fresh clone plus `docker compose down -v` would
+> have produced a stack with no tables. `!scripts/*.sql` now excepts them.
+
 ## Ports
 
 | | | | |

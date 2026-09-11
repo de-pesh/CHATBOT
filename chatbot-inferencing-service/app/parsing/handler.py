@@ -1,13 +1,11 @@
 """Document parsing entry point.
 
 Was three modules - a controller, a one-enum models package and a utils package
-- across three directories. The enum and the two helpers are used only by the
-handler below.
+- across three directories. Everything still used by the handler lives here.
 """
 import json
 import logging
 import os
-import re
 import uuid
 from enum import Enum
 
@@ -96,14 +94,6 @@ def get_filename_and_extension(file_path: str) -> tuple[str, str]:
 
     # Return filename and extension as packed value
     return (filename, ext)
-
-
-def clean_string(s: str):
-    return re.sub(r'[^a-zA-Z0-9]', '', s)
-
-
-def stringify_json(json_data: dict):
-    return json.dumps(json_data)
 
 
 def parse_json(stringified_json: str) -> dict:

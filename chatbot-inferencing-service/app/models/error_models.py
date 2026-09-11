@@ -32,17 +32,6 @@ class ErrorResponse(BaseModel):
     message: ErrorMessage
 
 
-class SessionNotFoundException(Exception):
-    """
-    A class to raise exception of Session not found.
-    """
-    def __init__(
-        self,
-        token: str
-    ):
-        super().__init__(f"Session for token: {token} not found")
-
-
 class AsyncDBLogHandler(logging.Handler):
     def __init__(self, app: FastAPI, db_service_url: str):
         super().__init__()

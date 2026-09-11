@@ -41,10 +41,6 @@ class ChatSessionBase(BaseModel):
     name: str = Field(..., description="The name or title of the chat session.")
     is_active: bool = True
 
-class ChatSessionCreate(ChatSessionBase):
-    """Model for creating a new chat session."""
-    user_id: str
-
 class ChatSessionUpdate(BaseModel):
     """Model for updating a session's name."""
     name: str = Field(..., description="The new name for the chat session.")

@@ -261,16 +261,12 @@ class FileController:
     async def get_all_files(
         self,
         file_type: Optional[FileType] = None,
-        entity_type: Optional[FileType] = None,
-        entity_id: Optional[int] = None,
     ) -> List[FileInDB]:
         """
-        Retrieves all file records, optionally filtered by a linked entity.
+        Retrieves all active file records.
 
         Args:
             file_type (Optional[FileType]): The file type to filter by.
-            entity_type (Optional[FileType]): The type of entity to filter by.
-            entity_id (Optional[int]): The ID of the entity.
 
         Returns:
             List[FileInDB]: A list of file records.
@@ -278,7 +274,7 @@ class FileController:
         try:
             results = await self.db_service.call_procedure(
                 StoredProcedures.GET_FILES_BY_ENTITY,
-                [entity_type.value if entity_type else None, entity_id]
+                [None, None]
             )
             if not results or not results[0]:
                 return []
