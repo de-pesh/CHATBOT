@@ -1,0 +1,8 @@
+# Normalise line endings. Shell scripts and Dockerfiles are pinned to LF: a
+# CRLF script copied into a Linux image fails with a confusing
+# "bad interpreter: /bin/sh^M".
+* text=auto
+*.sh text eol=lf
+Dockerfile* text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf

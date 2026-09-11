@@ -1,0 +1,43 @@
+# --- Secrets -----------------------------------------------------------------
+# Every .env here holds live Azure Blob and Azure OpenAI credentials. The
+# .env.sample files next to them are committed instead and show the shape.
+# docker-compose.yml is safe: it only references ${VARS} from the root .env.
+.env
+*/.env
+.env.local
+*/.env.local
+
+# --- Dependencies and build output -------------------------------------------
+node_modules/
+*/node_modules/
+.venv/
+*/.venv/
+venv/
+dist/
+*/dist/
+.vite/
+
+# --- Model weights -----------------------------------------------------------
+# indexing-rpc-server clones gte-multilingual-base (~600 MB) at image build
+# time; it should never be in the repo.
+hf_models/
+*/hf_models/
+vendor/gte-multilingual-base/
+
+# --- Python noise ------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- Editor / OS -------------------------------------------------------------
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# --- Local scratch -----------------------------------------------------------
+dead_modules.txt
+*.log

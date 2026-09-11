@@ -1,0 +1,52 @@
+trigger: none
+
+variables:
+  repository: 'llm-service'
+  deployPath: '/home/ccpm_admin'
+
+pool:
+  name: production-vm-pool    # Your self-hosted agent VM
+
+steps:
+# --------------------------
+# 1. CHECKOUT REPO
+# --------------------------
+- checkout: self
+  clean: true
+
+# --------------------------
+# 2. CLEAN & COPY K8S FOLDER
+# --------------------------
+- script: |
+    TARGET_DIR="$(deployPath)/$(repository)"
+    
+    echo "Cleaning existing files in $TARGET_DIR..."
+    sudo rm -rf "$TARGET_DIR"
+    sudo mkdir -p "$TARGET_DIR"
+
+    echo "Copying k8s folder from repo into VM..."
+    sudo cp -r $(System.DefaultWorkingDirectory)/k8s/* "$TARGET_DIR/"
+    echo "Copy completed."
+
+    sudo chown -R ccpm_admin:ccpm_admin "$TARGET_DIR"
+  displayName: "Copy fresh k8s folder to VM"
+
+# --------------------------
+# 3. APPLY DEPLOYMENT TO CLUSTER
+# --------------------------
+- script: |
+    TARGET_DIR="$(deployPath)/$(repository)"
+    cd "$TARGET_DIR"
+
+    echo "Current user: $(whoami)"
+    ls -l
+
+    echo "Kubernetes resources before deletion:"
+    sudo kubectl get all --all-namespaces
+
+    echo "Applying new code!"
+    sudo kubectl apply -f . -n ccpm
+
+    echo "Kubernetes resources after deployment:"
+    sudo kubectl get all --all-namespaces
+  displayName: "Apply k8s manifests to master node"

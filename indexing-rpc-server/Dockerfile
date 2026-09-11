@@ -1,0 +1,99 @@
+# RedHat UBI9 Python 3.12 - runs as UID 1001, app root is /opt/app-root/src.
+# Base image registry - point at an internal mirror on a closed network.
+ARG BASE_REGISTRY=registry.access.redhat.com
+FROM ${BASE_REGISTRY}/ubi9/python-312:latest
+
+# git-lfs is not in the UBI9 repos, so pull EPEL9 in for it.
+USER 0
+# EPEL supplies packages UBI9 does not carry. On a closed network set
+# EPEL_RPM_URL="" and make sure the internal repos already provide them.
+ARG EPEL_RPM_URL=https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
+RUN if [ -n "$EPEL_RPM_URL" ]; then dnf install -y "$EPEL_RPM_URL"; fi && \
+    dnf install -y git git-lfs && \
+    git lfs install --system && \
+    dnf clean all && rm -rf /var/cache/dnf
+USER 1001
+
+WORKDIR /opt/app-root/src
+
+# Dependency manifests first so code edits do not bust the install layer.
+COPY --chown=1001:0 pyproject.toml ./
+
+# UBI9 ships a venv at /opt/app-root but leaves VIRTUAL_ENV unset. Poetry then
+# has no active env to detect and, with virtualenvs.create=false, falls back to
+# the base interpreter under /usr - whose site-packages is root-owned, so the
+# install dies with PermissionError as UID 1001. Pointing VIRTUAL_ENV at the
+# venv that is already on PATH keeps poetry inside it.
+ENV VIRTUAL_ENV=/opt/app-root
+
+# Internal PyPI mirror, when one is configured. pip and poetry have to be told
+# separately - poetry does not read pip's index-url.
+ARG PIP_INDEX_URL=""
+ARG PIP_TRUSTED_HOST=""
+RUN if [ -n "$PIP_INDEX_URL" ]; then \
+        pip config set global.index-url "$PIP_INDEX_URL"; \
+        if [ -n "$PIP_TRUSTED_HOST" ]; then pip config set global.trusted-host "$PIP_TRUSTED_HOST"; fi; \
+        export POETRY_PYPI_MIRROR_URL="$PIP_INDEX_URL"; \
+    fi; \
+    pip install --no-cache-dir poetry && \
+    poetry config virtualenvs.create false && \
+    poetry install --no-root --no-interaction --no-ansi && \
+    pip install --no-cache-dir grpcio-reflection
+
+# Model must land next to app/ - embedding_service.py resolves it as
+# Path(__file__).parents[2] / "hf_models" / "gte-multilingual-base".
+# HF_MODEL_MODE=download clones from huggingface.co; =vendored uses the copy
+# already placed in <service>/vendor/, for machines with no internet access.
+ARG HF_MODEL_MODE=download
+COPY --chown=1001:0 vendor/ ./vendor/
+RUN if [ "$HF_MODEL_MODE" = "vendored" ]; then \
+        test -d vendor/gte-multilingual-base || { \
+            echo "HF_MODEL_MODE=vendored but vendor/gte-multilingual-base is missing"; exit 1; }; \
+        mkdir -p hf_models && cp -r vendor/gte-multilingual-base hf_models/; \
+    else \
+        echo "Downloading Hugging Face model..." && \
+        git clone --depth 1 https://huggingface.co/Alibaba-NLP/gte-multilingual-base \
+            hf_models/gte-multilingual-base && \
+        rm -rf hf_models/gte-multilingual-base/.git; \
+    fi && rm -rf vendor && echo "Model ready."
+
+# Warm the model once, while the network is still reachable.
+#
+# gte-multilingual-base's config.json maps its classes to code in a DIFFERENT
+# repo - "auto_map": {"AutoModel": "Alibaba-NLP/new-impl--modeling.NewModel"} -
+# which transformers downloads at load time because trust_remote_code=True.
+# Cloning only the model repo and then setting HF_HUB_OFFLINE=1 below meant that
+# lookup could never resolve, so every embed call failed at runtime with
+# "Cannot generate embeddings because the model failed to load" and nothing
+# could ever be indexed.
+#
+# Loading it here caches that remote code into the image, and turns a silent
+# runtime failure into a build failure if the model cannot be loaded at all.
+RUN HF_HOME=/opt/app-root/src/.cache/huggingface \
+    python -c "\
+from sentence_transformers import SentenceTransformer; \
+m = SentenceTransformer('/opt/app-root/src/hf_models/gte-multilingual-base', trust_remote_code=True); \
+print('embedding model warm-up OK, dim =', m.get_sentence_embedding_dimension())"
+
+# Code last, so edits do not trigger a model redownload.
+COPY --chown=1001:0 . .
+
+# OpenShift runs the container with an arbitrary UID in group 0, so every
+# path the app touches must be group-writable.
+RUN chmod -R g=u /opt/app-root/src
+
+# HOME is not writable under an arbitrary UID; point every cache at the app dir.
+# TRANSFORMERS_CACHE is deliberately NOT set. It is deprecated, and it overrides
+# the hub cache path wholesale: with both set, HF_HOME put the warmed download
+# in .cache/huggingface/hub/ while TRANSFORMERS_CACHE made the lookup search
+# .cache/huggingface/ - one level too high. Every load then failed offline with
+# "couldn't connect to https://huggingface.co". HF_HOME alone is correct and
+# covers both the hub cache and the trust_remote_code module cache.
+ENV PYTHONUNBUFFERED=1 \
+    HOME=/opt/app-root/src \
+    HF_HOME=/opt/app-root/src/.cache/huggingface \
+    HF_HUB_OFFLINE=1
+
+EXPOSE 8000
+
+CMD ["python", "-m", "app"]

@@ -1,0 +1,7 @@
+# Generated protobuf stubs are excluded: their `import ... as
+# google_dot_protobuf_dot_struct__pb2` line looks unused to static analysis, but
+# importing it is what registers google/protobuf/struct.proto in the descriptor
+# pool. Removing it makes every service that loads these stubs die at import
+# with "Depends on file 'google/protobuf/struct.proto', but it has not been
+# loaded". Never lint or autofix generated code.
+extend-exclude = ["*_pb2.py", "*_pb2_grpc.py"]

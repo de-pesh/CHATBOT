@@ -1,0 +1,177 @@
+# Guide
+
+Two ways to run the stack locally. **Docker is the easy one** - it needs no
+Python, Poetry, Node or OCR toolchain on the host.
+
+## Run everything in Docker
+
+```bash
+docker compose build     # first time only, and slow: the two rpc servers
+                         # each pull torch and a ~600 MB Hugging Face model
+docker compose up -d
+docker compose ps
+```
+
+Open <http://localhost:3006> (it redirects to `/chatbot/`).
+
+```bash
+docker compose logs -f main-service   # follow one service
+docker compose restart llm-service    # restart one
+docker compose down                   # stop; add -v to wipe the databases
+```
+
+After changing a service's code, rebuild just that image:
+
+```bash
+docker compose up -d --build llm-service
+```
+
+### What the compose file sets up for you
+
+* **MySQL schema** is applied automatically from `main-service/scripts/*.sql`
+  on first start - no manual `mysql <` step. It only runs on an empty volume,
+  so `docker compose down -v` is how you re-apply it.
+* **Mongo and Neo4j** run as containers too, replacing the hand-started
+  `docker-mongo-1` and the local Neo4j the native script assumed.
+* **Redis** runs in single-node *cluster* mode, because the code uses
+  `redis.asyncio.cluster.RedisCluster` and will not talk to a standalone server.
+* **Config**: the per-service `.env` files are excluded by `.dockerignore` and
+  never reach the images. Everything is set in `docker-compose.yml`, with the
+  Azure credentials substituted in from the `.env` next to it. Service names
+  (`redis`, `mysql`, `main-service`, ...) replace the `127.0.0.1` addresses the
+  native setup used.
+
+### What runs, and what was trimmed
+
+Seven containers, scoped to **chatbot + document ingestion**:
+
+```
+chat      FE -> chatbot-inferencing-service -> indexing-rpc-server (vector search)
+                                            -> mongo, mysql, Azure OpenAI
+ingest    main-service -> POST /kb ------> chatbot-inferencing-service
+          main-service -> chatbot_queue -> (same service, in-process worker)
+                                            -> parses in-process
+                                            -> indexing-rpc-server
+```
+
+Started at 13. Removed:
+
+* **neo4j** - driver created at startup, never used by any route; `Neo4jService`
+  was never imported. Its failure path could block main-service from booting.
+* **parsing-service, indexing-service, llm-service** - the assessment pipeline.
+  Nothing on the chat or ingestion path touched them. Source still on disk,
+  unbuilt.
+* **parsing-rpc-server** - a container, a proto and a network hop for one gRPC
+  method, `ParseFile`. Its modules took their dependencies by injection, so they
+  moved into `app/parsing/` unchanged.
+* **chatbot-kb-management-service** - ran the same parse-then-index work `/kb`
+  already did, differing only in trigger (a Redis message) and some MySQL
+  bookkeeping. Now an asyncio task inside the inferencing service
+  (`app/kb_worker/`), sharing one parser instead of duplicating it.
+* **The `Test/MyFunction` gRPC scaffold** indexing-rpc-server served on :50051.
+* **The custom cluster-mode Redis image.**
+
+`indexing-rpc-server` deliberately stays separate: it holds the 600 MB embedding
+model, and that is the one split in this system that pays for itself.
+
+**Scaling the worker back out**, if ingestion ever competes with chat for the
+event loop: run the same image twice - `KB_WORKER_ENABLED=false` on the API
+replicas, `true` on a worker replica. No code change, no second codebase.
+
+### Image sizes
+
+| | was | now |
+|---|---|---|
+| containers | 13 | **7** |
+| all images | ~80 GB | **14 GB** |
+| indexing-rpc-server | 17.2 GB | 8.4 GB |
+| parsing-rpc-server | 17.2 GB | *gone (folded in)* |
+
+Two causes, both fixed:
+
+* `parsing-rpc-server` baked in the 600 MB embedding model and the whole torch
+  stack for an `EmbeddingService` that was **never imported**.
+* Both installed `torch 2.14.0+cu130` - 3.2 GB of `nvidia-*` wheels - on a
+  workload where `torch.cuda.is_available()` is `False`. `indexing-rpc-server`
+  now pins torch to the PyTorch CPU index (see its `pyproject.toml`; a closed
+  network needs an internal mirror of that index).
+
+### Redis: standalone, not cluster
+
+The client used `redis.asyncio.cluster` against a hand-rolled single-node
+"cluster" for one queue. Nothing cluster-specific was used - the five commands
+(`bzpopmin`, `zadd`, `setex`, `get`, `ping`) are all standard - so it now runs
+plain `redis:7-alpine` on the normal port 6379, and `RedisClusterService` was
+renamed `RedisQueueService`.
+
+This also removes the constraint in `../deploy/README.md` ("Redis must run in
+cluster mode"), which had made the managed Azure Cache instance unusable.
+
+### The embedding model needs two repos, not one
+
+`gte-multilingual-base`'s `config.json` maps its classes to code in a *different*
+repo:
+
+```json
+"AutoModel": "Alibaba-NLP/new-impl--modeling.NewModel"
+```
+
+`trust_remote_code=True` makes transformers fetch that at load time. The image
+cloned only the model repo and set `HF_HUB_OFFLINE=1`, so **embedding always
+failed and nothing could ever be indexed**. Two fixes in the Dockerfile:
+
+1. the model is loaded once at build time, which caches the remote code into the
+   image and fails the build if it cannot be loaded;
+2. `TRANSFORMERS_CACHE` is no longer set - it is deprecated and it overrode the
+   hub cache path, sending lookups one directory above where `HF_HOME` had put
+   the download.
+
+**A closed-network build needs `Alibaba-NLP/new-impl` mirrored too**, not just
+the model repo.
+
+### Known gaps in the local images
+
+* **OCR is not installed.** `tesseract`, `tesseract-langpack-eng`,
+  `tesseract-langpack-ara`, `qpdf` and `unpaper` are in none of the repos UBI9 +
+  EPEL9 enable, so `OCR_MODE=optional` skips them and scanned PDFs will not
+  parse. (`ghostscript` and `pngquant` do install.) Same story as
+  `soffice`/LibreOffice, which has never been available in these images.
+* **Ingestion is verified end to end**: upload -> parse -> embed -> index ->
+  retrieve -> answer. A `policy.txt` test document is left in the `chatbot_policies`
+  collection; drop it with `DELETE /kb/{file_id}` or wipe it via `docker compose down -v`.
+  stack from PyPI even though nothing here uses a GPU. Installing the CPU-only
+  wheels (`--index-url https://download.pytorch.org/whl/cpu`) would cut most of
+  that, if disk becomes a problem.
+* **Azure Blob and Azure OpenAI are still external**, reached over the
+  internet with the credentials in `.env`. Nothing local stands in for them.
+* The chat UI calls `http://localhost:8003/chat` directly - that address is
+  hardcoded in `FE/src/main.tsx`, which is why port 8003 is published.
+* The frontend image is built with `build:local` (`FE/vite.local.ts`), which
+  is `vite.qa.ts` minus the Module Federation remote it fetches from a public
+  IP. Nothing under `FE/src/` imports that remote.
+
+## Run natively instead
+
+Needs Python 3.12, Poetry, Node and Docker (for the databases).
+
+```bash
+./start-all-services.sh setup    # once: poetry install + npm install
+./start-all-services.sh          # start everything
+./start-all-services.sh status
+./start-all-services.sh stop
+```
+
+This still expects the infra-only compose file, kept as
+`docker-compose.infra-only.yml.bak`.
+
+## Ports
+
+Identical in both modes.
+
+| | | | |
+|---|---|---|---|
+| main-service | 8000 | redis | 7000 |
+| indexing-rpc-server | 8001 | mongo | 27017 |
+| parsing-rpc-server | 8002 | mysql | 3306 |
+| chatbot-inferencing-service | 8003 | | |
+| UI | 3006 | | |
