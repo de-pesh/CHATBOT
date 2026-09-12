@@ -15,10 +15,10 @@ from enum import StrEnum
 from functools import partial
 
 from app.config import Settings
-from app.core.stored_procedures import StoredProcedures
+from app.stored_procedures import StoredProcedures
 from app.kb_worker.indexing_rpc import IndexingRPCService
 from app.kb_worker.queue_service import RedisQueueService, extract_blob_path_from_url
-from app.parsing import parsing_handler
+from app.kb_worker.indexing_rpc import parse_file_via_rpc
 from app.services.database_service import DatabaseService
 
 logger = logging.getLogger(__name__)
@@ -31,8 +31,6 @@ async def add_file_handler(
     payload: dict,
     settings: Settings,
     db_service: DatabaseService,
-    azure_blob_service,
-    ollama_client,
 ):
     """Parse a file, index it, and record the parsed path against the file row.
 
@@ -46,12 +44,8 @@ async def add_file_handler(
 
         blob_path = extract_blob_path_from_url(original_file_path)
 
-        # 1. Parse in-process.
-        parsed_file_path = await parsing_handler(
-            file_path=blob_path,
-            azure_blob_service=azure_blob_service,
-            ollama_client=ollama_client,
-        )
+        # 1. Parse, in the compute service.
+        parsed_file_path = await parse_file_via_rpc(settings, blob_path)
         if not parsed_file_path:
             raise ValueError("Parsing did not return a valid parsed file path.")
         logger.info("File %s parsed to: %s", file_id, parsed_file_path)
@@ -152,8 +146,6 @@ async def _process_message(
     *,
     settings: Settings,
     db_service: DatabaseService,
-    azure_blob_service,
-    ollama_client,
 ):
     action = payload.get("action_type")
     logger.info("[KBWorker] Task %s: action=%s", operation_id, action)
@@ -163,8 +155,6 @@ async def _process_message(
             payload=payload,
             settings=settings,
             db_service=db_service,
-            azure_blob_service=azure_blob_service,
-            ollama_client=ollama_client,
         )
     elif action == PolicyActionType.DELETE:
         await delete_file_handler(
@@ -183,8 +173,6 @@ async def _process_message(
 async def run_kb_worker(
     settings: Settings,
     db_service: DatabaseService,
-    azure_blob_service,
-    ollama_client,
 ):
     """Consume the chatbot queue until cancelled."""
     redis_password = (
@@ -205,15 +193,13 @@ async def run_kb_worker(
                 _process_message,
                 settings=settings,
                 db_service=db_service,
-                azure_blob_service=azure_blob_service,
-                ollama_client=ollama_client,
             ),
             brpop_timeout=settings.WORKER_BRPOP_TIMEOUT,
             error_retry_delay=settings.WORKER_ERROR_RETRY_DELAY,
         )
 
 
-def start_kb_worker(app, settings, db_service, azure_blob_service, ollama_client) -> None:
+def start_kb_worker(app, settings, db_service) -> None:
     """Launch the worker as a background task, if enabled."""
     if not settings.KB_WORKER_ENABLED:
         logger.info("[KBWorker] disabled (KB_WORKER_ENABLED=false); not consuming the queue.")
@@ -221,7 +207,7 @@ def start_kb_worker(app, settings, db_service, azure_blob_service, ollama_client
 
     async def _supervised():
         try:
-            await run_kb_worker(settings, db_service, azure_blob_service, ollama_client)
+            await run_kb_worker(settings, db_service)
         except asyncio.CancelledError:
             logger.info("[KBWorker] cancelled during shutdown.")
             raise

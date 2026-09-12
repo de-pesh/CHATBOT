@@ -51,7 +51,7 @@ RUN if [ -n "$PIP_INDEX_URL" ]; then \
     /tmp/poetry-venv/bin/poetry install --no-root --only main --no-interaction --no-ansi && \
     pip install --no-cache-dir grpcio-reflection && \
     rm -rf /tmp/poetry-venv /opt/app-root/src/.cache/pypoetry /opt/app-root/src/.cache/pip && \
-    python -c "import grpc, grpc_reflection, google.protobuf, sentence_transformers, torch, pymongo; print('dependency smoke test OK')"
+    python -c "import grpc, grpc_reflection, google.protobuf, sentence_transformers, torch, pymongo, fitz, ocrmypdf, openpyxl, PIL, langchain_azure_ai; print('dependency smoke test OK')"
 
 # Model must land next to app/ - embedding_service.py resolves it as
 # Path(__file__).parents[2] / "hf_models" / "gte-multilingual-base".
@@ -102,6 +102,29 @@ RUN chmod -R g=u /opt/app-root
 # Runtime stage: one COPY of the finished tree, no toolchain, no churn.
 # ==============================================================================
 FROM ${BASE_REGISTRY}/ubi9/python-312:latest
+
+# ocrmypdf shells out to these at run time, so unlike git/git-lfs they belong
+# in the runtime stage, not the builder. Carried over from the chat service
+# with ParseFile.
+#
+# tesseract* / qpdf / unpaper are in neither UBI9 nor EPEL9 (they need an
+# entitled RHEL AppStream build), so OCR_MODE=optional installs what is
+# available and skips the rest rather than failing the build. Scanned-PDF OCR
+# degrades; every other format parses.
+USER 0
+ARG EPEL_RPM_URL=https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
+ARG OCR_MODE=required
+ARG OCR_PACKAGES="tesseract tesseract-langpack-eng tesseract-langpack-ara ghostscript qpdf pngquant unpaper"
+RUN if [ -n "$EPEL_RPM_URL" ]; then dnf install -y "$EPEL_RPM_URL"; fi && \
+    if [ "$OCR_MODE" = "optional" ]; then \
+        for pkg in $OCR_PACKAGES; do \
+            dnf install -y "$pkg" || echo "OCR package unavailable, skipping: $pkg"; \
+        done; \
+    else \
+        dnf install -y $OCR_PACKAGES; \
+    fi \
+    && dnf clean all && rm -rf /var/cache/dnf
+USER 1001
 
 WORKDIR /opt/app-root/src
 

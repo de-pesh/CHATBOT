@@ -4,7 +4,6 @@ from urllib.parse import urlsplit
 import uuid
 from uuid import uuid4
 
-import aiohttp
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from fastapi.responses import JSONResponse, StreamingResponse
 
@@ -15,9 +14,10 @@ from app.dependencies import (
     has_permission,
     get_file_storage_service,
     get_chatbot_queue,
-    get_http_client,
 )
+from app.config import Settings, get_settings
 from app.models.files import FileCreate, FileResponse, FileType
+from app.services import kb_service
 from app.services.database_service import DatabaseService
 from app.services.storage_service import FileStorageService
 from app.services.redis_service import RedisQueueService
@@ -40,10 +40,10 @@ async def create_files(
     db_service: DatabaseService = Depends(get_db_service),
     file_storage_service: FileStorageService = Depends(get_file_storage_service),
     chatbot_queue: RedisQueueService = Depends(get_chatbot_queue),
-    http_client: aiohttp.ClientSession = Depends(get_http_client),
+    settings: Settings = Depends(get_settings),
 ) -> List[FileResponse]:
     """Endpoint to upload files and create file records."""
-    controller = FileController(db_service, chatbot_queue, http_client)
+    controller = FileController(db_service, chatbot_queue, file_storage_service)
     file_responses = []
     for file in files:
         file_contents = await file.read()
@@ -53,12 +53,19 @@ async def create_files(
             file_name=unique_blob_name
         )
 
-        kb_file_id = await FileController.push_to_knowledge_base(
-            http_client=http_client,
-            filename=file.filename,
-            content_type=file.content_type,
-            file_bytes=file_contents,
+        # The original is kept at file_url above; ingest_bytes stores its own
+        # copy under chatbot-kb/ for the parser to read. Indexing is not
+        # best-effort here: the caller asked for a searchable document, so a
+        # failure is surfaced rather than leaving an unindexed file record.
+        result = await kb_service.ingest_bytes(
+            file_storage_service, settings, file.filename or "unnamed", file_contents
         )
+        if not result.success:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Knowledge-base ingestion failed for {file.filename}: {result.message}",
+            )
+        kb_file_id = result.file_id
 
         file_data = FileCreate(
             name=file.filename,
@@ -124,7 +131,8 @@ async def delete_file(
     current_user: CurrentUserDep,
     db_service: DatabaseService = Depends(get_db_service),
     chatbot_queue: RedisQueueService = Depends(get_chatbot_queue),
-    http_client: aiohttp.ClientSession = Depends(get_http_client),
+    settings: Settings = Depends(get_settings),
+    file_storage_service: FileStorageService = Depends(get_file_storage_service),
 ) -> JSONResponse:
     """Endpoint to delete a file record, or a knowledge-base document.
 
@@ -132,7 +140,7 @@ async def delete_file(
       * an integer  -> the SQL file record (cascades to its KB document, if any)
       * a UUID      -> a knowledge-base document only, as listed by GET /kb
     """
-    controller = FileController(db_service, chatbot_queue, http_client)
+    controller = FileController(db_service, chatbot_queue, file_storage_service)
     try:
         sql_file_id = int(file_id)
     except ValueError:
@@ -156,7 +164,7 @@ async def delete_file(
                 },
                 status_code=status.HTTP_200_OK,
             )
-        await controller.delete_knowledge_base_document(file_id)
+        await kb_service.delete_document(settings, file_id)
         return JSONResponse(
             content={"message": f"Knowledge-base document {file_id} deleted successfully"},
             status_code=status.HTTP_200_OK,

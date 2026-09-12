@@ -13,9 +13,10 @@ NodePort Services) for reference only.
 
 > **Stale.** `../deploy/manifests.yaml` still declares NEO4J_* keys and
 > Deployments for the five services removed from this repo, and `build.sh`
-> still expects their build contexts. Both need reconciling with the four
-> images compose now builds: main-service, chatbot-inferencing-service,
-> indexing-rpc-server and the frontend.
+> still expects their build contexts. Both need reconciling with the three
+> images compose now builds: main-service, indexing-rpc-server and the
+> frontend. chatbot-inferencing-service has since been merged into
+> main-service, so that Deployment must go too.
 
 The Azure DevOps pipelines in each service targeted AKS and ACR and do not
 apply to the OpenShift deployment.

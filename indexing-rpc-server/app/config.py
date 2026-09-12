@@ -12,6 +12,14 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL_PATH: Optional[str] = None
     GRPC_PORT: int = 8000
 
+    # Vision model, used by ParseFile for images and scanned pages only.
+    # Everything else extracts without it, so the defaults let the service
+    # start and parse text documents even with no Ollama endpoint configured.
+    OLLAMA_MODEL: str = "llama3.2-vision:11b"
+    OLLAMA_BASE_URL: str = "http://127.0.0.1:11434"
+    OLLAMA_API_KEY: SecretStr = SecretStr("local-dev-unset")
+    OLLAMA_TEMPERATURE: float = 0.1
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 

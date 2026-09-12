@@ -19,6 +19,7 @@ from app.observability import setup_logging
 from app.models.common import StatusResponse
 from app.routers import (
     auth,
+    chat,
     file,
     kb
 )
@@ -99,6 +100,8 @@ logger.info("Including API routers...")
 app.include_router(file.router, prefix="/files", tags=["Files"])
 app.include_router(kb.router, prefix="/kb", tags=["Knowledge Base"])
 app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
+# chat.router declares its own prefix="/chat", unlike the others.
+app.include_router(chat.router)
 
 
 logger.info("API routers included.")

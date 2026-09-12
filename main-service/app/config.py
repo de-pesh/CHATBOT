@@ -60,16 +60,41 @@ class Settings(BaseSettings):
     NEXTCLOUD_PASSWORD: Optional[SecretStr] = Field(None, description="Nextcloud password")
 
     # --- File Upload Settings ---
-    # --- Chatbot Inferencing Service Settings ---
-    CHATBOT_INFERENCING_SERVICE_URL: Optional[str] = Field(
-        None,
-        description="Base URL of the chatbot-inferencing-service (e.g. http://localhost:8003), used to push uploaded documents into its knowledge base via /kb.",
-    )
 
     # --- JWT Settings ---
     SECRET_KEY: SecretStr = Field(..., description="Secret key for JWT encoding and decoding.")
     ALGORITHM: str = Field("HS256", description="Algorithm used for JWT signing.")
     ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(30, description="Access token expiration time in minutes.")
+
+    # --- Chat: Azure OpenAI ---
+    LLM_API_URL: Optional[str] = Field(None, description="Chat completion endpoint URL")
+    MODEL_NAME: Optional[str] = Field(None, description="Chat model deployment name")
+    TEMPERATURE: float = Field(0.1, description="Sampling temperature for chat completions")
+    AZURE_OPENAI_API_KEY: Optional[SecretStr] = Field(None, description="Azure OpenAI API key")
+    AZURE_OPENAI_ENDPOINT: Optional[str] = Field(None, description="Azure OpenAI endpoint")
+    AZURE_OPENAI_API_VERSION: str = Field("2024-05-01-preview", description="Azure OpenAI API version")
+    AZURE_OPENAI_DEPLOYMENT_NAME: Optional[str] = Field(None, description="Azure OpenAI deployment name")
+
+    # --- Vector store (read directly for GET /kb; writes go through the RPC) ---
+    MONGO_CONNECTION_STRING: Optional[SecretStr] = Field(None, description="MongoDB connection URI")
+    MONGO_DATABASE_NAME: Optional[str] = Field(None, description="MongoDB database name")
+    MONGODB_COLLECTION_NAME: str = Field("chatbot_policies", description="Collection holding the indexed chunks")
+
+    # --- Compute service (gRPC): ParseFile, Index, Search, Update, Delete ---
+    RPC_SERVER: str = Field("indexing-rpc-server:8001", description="host:port of the compute service")
+
+    # --- KB queue worker ---
+    KB_WORKER_ENABLED: bool = Field(True, description="Run the chatbot_queue consumer in-process")
+    CHATBOT_QUEUE_DLQ_NAME: Optional[str] = Field("chatbot_queue_dlq", description="Dead-letter queue name")
+    CHATBOT_QUEUE_MAX_RETRIES: int = Field(3, description="Retries before a task is dead-lettered")
+    WORKER_BRPOP_TIMEOUT: int = Field(5, description="Blocking pop timeout, seconds")
+    WORKER_ERROR_RETRY_DELAY: int = Field(5, description="Delay after a worker error, seconds")
+    # DATABASE_SERVICE_URL is deliberately NOT a field here. docker-compose's
+    # shared infra-env sets it to http://main-service:8000, and lifespan_manager
+    # would then attach AsyncDBLogHandler pointing this service's ERROR logs at
+    # itself - at a path it does not serve, so each failed post logs an error
+    # that gets posted again. getattr(settings, 'DATABASE_SERVICE_URL', None)
+    # returns None without the field, which is what keeps DB logging off.
 
     # Prompt Settings
     # Pydantic model configuration

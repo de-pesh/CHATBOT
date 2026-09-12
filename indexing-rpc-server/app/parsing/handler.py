@@ -9,7 +9,7 @@ import os
 import uuid
 from enum import Enum
 
-from app.parsing.blob import AzureBlobService
+from app.services.azure_blob_storage_service import AzureBlobService
 from app.parsing.extractors import (
     docx_helper,
     image_helper,

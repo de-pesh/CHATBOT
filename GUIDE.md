@@ -43,15 +43,17 @@ docker compose up -d --build main-service
 
 ### What runs, and what was trimmed
 
-Seven containers, scoped to **chatbot + document ingestion**:
+Six containers, scoped to **chatbot + document ingestion**:
 
 ```
-chat      FE -> chatbot-inferencing-service -> indexing-rpc-server (vector search)
-                                            -> mongo, mysql, Azure OpenAI
-ingest    main-service -> POST /kb ------> chatbot-inferencing-service
-          main-service -> chatbot_queue -> (same service, in-process worker)
-                                            -> parses in-process
-                                            -> indexing-rpc-server
+chat      FE -> main-service -> Search RPC -> indexing-rpc-server -> mongo
+                             -> Azure OpenAI
+ingest    FE/API -> main-service -> blob
+                                 -> ParseFile RPC -> indexing-rpc-server
+                                 -> Index RPC     -> indexing-rpc-server -> mongo
+                                 -> mysql (file record)
+delete    main-service -> chatbot_queue -> kb_worker (same process)
+                                        -> Delete RPC -> indexing-rpc-server
 ```
 
 Started at 13. Removed:
@@ -82,11 +84,11 @@ replicas, `true` on a worker replica. No code change, no second codebase.
 
 | | was | now |
 |---|---|---|
-| containers | 13 | **7** |
-| all images | ~80 GB | **8.4 GB** |
-| indexing-rpc-server | 17.2 GB | **4.4 GB** |
-| chatbot-inferencing-service | - | **2.2 GB** |
-| main-service | - | **1.68 GB** |
+| containers | 13 | **6** |
+| all images | ~80 GB | **6.6 GB** |
+| indexing-rpc-server | 17.2 GB | **4.72 GB** |
+| main-service | - | **1.78 GB** |
+| chatbot-inferencing-service | - | *gone (merged into main-service)* |
 | parsing-rpc-server | 17.2 GB | *gone (folded in)* |
 
 Causes, all fixed:
@@ -167,56 +169,104 @@ the model repo.
 
 ## Layout
 
+Two application images, a frontend and infrastructure.
+
 ```
-main-service/app/            the admin API: auth, file upload, KB management
-  routers/                   auth.py, file.py, kb.py - mounted by main.py
-  controllers/               auth, error, file
-  services/                  mysql, redis, azure blob
-  models/                    auth.py, common.py, files.py
+main-service/app/            CONTROL PLANE - everything the API does
+  routers/                   auth.py, chat.py, file.py, kb.py
+  controllers/               auth, chat, error, file
+  helpers/                   citation, context, prompt (chat retrieval)
+  kb_worker/                 chatbot_queue consumer
+  services/                  mysql, redis, azure blob, kb_service, ollama
+  models/                    auth, chat, chat_errors, common, files
   security.py                JWT, bcrypt, the Permission enum
   stored_procedures.py       every MySQL stored-proc call
   observability.py           request-ID middleware, filter and logging setup
-chatbot-inferencing-service/app/
-  routers/                   /chat and /kb
-  parsing/                   document extraction (was parsing-rpc-server)
-  kb_worker/                 queue consumer (was chatbot-kb-management-service)
-indexing-rpc-server/         gRPC: embed and search, owns the HF model
+  indexing_service_pb2*.py   generated stubs (client side)
+
+indexing-rpc-server/app/     COMPUTE PLANE - everything with a model in it
+  rpc_server.py              VectorService + ParsingService on one port
+  parsing/                   ParseFile: extraction and OCR
+  services/embedding_service gte-multilingual-base, 768-dim
+  services/mongo_service     the vector store
+  controllers/               chunking and indexing
+  indexing_service.proto     the contract; stubs are generated from it
+
 FE/                          React SPA served under /chatbot/
 ```
 
-`app/observability.py` is named in `app/logging.yaml` by dotted path
-(`app.observability.RequestIDFilter`), so renaming it means editing that YAML
-too - nothing imports the filter directly.
+The split is by cost, not by feature. The compute image carries torch, a
+600 MB embedding model and the OCR toolchain, and sits at ~1.9 GB resident
+once the model loads; main-service holds none of that and runs at ~90 MB.
+Folding them together would put both in the process serving /chat and reload
+them on every deploy of it.
+
+### What talks to what
+
+```
+browser -> :8000 /chat            main-service
+                                    -> Search RPC  -> compute -> mongo
+                                    -> Azure OpenAI
+
+upload  -> :8000 /files or /kb    main-service
+                                    -> blob (the original)
+                                    -> ParseFile RPC -> compute -> blob (text)
+                                    -> Index RPC     -> compute -> mongo
+                                    -> mysql (file record, /files only)
+
+delete  -> :8000 /files/{id}      main-service -> chatbot_queue
+                                    -> kb_worker (same process)
+                                    -> Delete RPC -> compute
+```
+
+Nothing crosses the RPC but paths: both sides reach Azure Blob Storage, so a
+document is uploaded once and referred to by blob path thereafter.
+
+### Regenerating the gRPC stubs
+
+`indexing-rpc-server/app/indexing_service.proto` is the source of truth. The
+stubs were committed without it for a long time, so the contract could not be
+regenerated. From `indexing-rpc-server/`:
+
+```bash
+python -m grpc_tools.protoc -I. --python_out=. --grpc_python_out=. \
+    app/indexing_service.proto
+cp app/indexing_service_pb2*.py ../main-service/app/
+```
+
+grpcio-tools is a dev dependency in both services and is not installed into
+either image (`poetry install --only main`).
 
 ## API surface
 
-main-service is down to what the chatbot needs. 35 paths -> 9.
+Everything is on main-service, port 8000. 13 paths.
 
 ```
 GET    /health
-POST   /auth/authenticate           |
-POST   /auth/change-password        |  see the warning below
-POST   /auth/re-authenticate        |
-POST   /files/                      upload -> Azure Blob + push to the KB
+POST   /auth/authenticate | change-password | re-authenticate
+POST   /chat                        ask a question
+GET    /chat/history                past turns for a conversation
+GET    /chat/session                list sessions
+PATCH  /chat/session/{id}           rename
+DELETE /chat/session/{id}           remove
+POST   /files/                      upload -> blob + parse + index + SQL record
 GET    /files/  /files/{id}         file records
 DELETE /files/{id}                  record + blob + KB document
-GET    /kb/                         list KB documents (proxies :8003/kb)
-DELETE /kb/{kb_file_id}             remove one KB document
+POST   /kb/                         upload -> parse + index, no SQL record
+GET    /kb/                         list indexed documents
+DELETE /kb/{kb_file_id}             remove one
 ```
 
-Removed: `/frameworks`, `/organizations`, `/permissions`, `/roles`,
-`/role-permissions`, `/user`, `/user-role-assignments` - the compliance and
-RBAC admin domain, 46 of the 58 method+path combinations. The frontend never
-called any of it; it only calls `:8003/chat` and `:8003/chat/history`.
+`/files` and `/kb` both ingest. The difference is bookkeeping: `/files` keeps
+the original blob and a SQL row, `/kb` only makes the document searchable.
 
 > **Auth does not currently work, and is switched off.** `DISABLE_AUTH=True` in
 > both `docker-compose.yml` and `main-service/.env`, so every endpoint above is
 > reachable with no token. It could not work as things stand anyway: there is no
-> `users` table, and `filter_users`, `upsert_user` and `get_user_permissions`
+> `users` table, and `filter_users`, `upsert_user` and `filter_user_permissions`
 > are called by `auth_controller` and `dependencies.has_permission` but are not
-> defined in any `.sql` file in this repo. `GET /user/` used to return 500 for
-> exactly that reason. Before exposing this service, add the user schema and set
-> `DISABLE_AUTH=False`.
+> defined in any `.sql` file in this repo. Before exposing this service, add the
+> user schema and set `DISABLE_AUTH=False`.
 
 ## Database
 
@@ -247,5 +297,4 @@ assessments, change_requests, the label and asset mappings) and
 |---|---|---|---|
 | main-service | 8000 | redis | 6379 |
 | indexing-rpc-server | 8001 | mongo | 27017 |
-| chatbot-inferencing-service | 8003 | mysql | 3306 |
-| UI | 3006 | | |
+| UI | 3006 | mysql | 3306 |

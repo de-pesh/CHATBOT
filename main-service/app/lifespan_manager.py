@@ -11,6 +11,9 @@ import aiohttp
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
+from langchain_openai import AzureChatOpenAI
+from langchain_ollama import ChatOllama
+
 from app.config import get_settings, Settings
 from app.models.common import AsyncDBLogHandler
 from app.services.database_service import DatabaseService
@@ -135,6 +138,38 @@ async def lifespan(app: FastAPI):
     app.state.http_client = aiohttp.ClientSession()
     logger.info("Shared aiohttp client session created.")
 
+    # --- LLM client for /chat (Azure OpenAI preferred, Ollama as fallback) ---
+    # Held on app.state because app.services.ollama_service.get_ollama_client
+    # reads it from there as a FastAPI dependency.
+    app.state.ollama_client = None
+    if settings.AZURE_OPENAI_API_KEY and settings.AZURE_OPENAI_ENDPOINT and settings.AZURE_OPENAI_DEPLOYMENT_NAME:
+        logger.info("Creating Azure OpenAI client")
+        try:
+            app.state.ollama_client = AzureChatOpenAI(
+                azure_endpoint=settings.AZURE_OPENAI_ENDPOINT,
+                api_key=settings.AZURE_OPENAI_API_KEY.get_secret_value(),
+                api_version=settings.AZURE_OPENAI_API_VERSION,
+                azure_deployment=settings.AZURE_OPENAI_DEPLOYMENT_NAME,
+                # gpt-5-mini and other reasoning-family deployments only accept
+                # the default temperature (1) and reject an explicit override.
+            )
+        except Exception:
+            logger.exception("Failed to create Azure OpenAI client during startup!")
+            app.state.ollama_client = None
+    elif settings.MODEL_NAME and settings.LLM_API_URL:
+        logger.info("Creating Ollama client")
+        try:
+            app.state.ollama_client = ChatOllama(
+                model=settings.MODEL_NAME,
+                temperature=settings.TEMPERATURE or 0.1,
+                base_url=settings.LLM_API_URL.replace("/api/chat", ""),
+            )
+        except Exception:
+            logger.exception("Failed to create Ollama client during startup!")
+            app.state.ollama_client = None
+    else:
+        logger.warning("No LLM backend configured (Azure OpenAI or Ollama). /chat will return 503.")
+
     # Initialize AsyncDBLogHandler to send ERROR level logs to a database service.
     db_service_url_value = getattr(settings, 'DATABASE_SERVICE_URL', None)
     if isinstance(db_service_url_value, str) and db_service_url_value:
@@ -159,11 +194,25 @@ async def lifespan(app: FastAPI):
     else:
         logger.warning("DATABASE_SERVICE_URL not configured in settings. Database logging will be disabled.")
 
+    # --- Knowledge-base queue worker ---
+    # Was its own container (chatbot-kb-management-service), then an asyncio
+    # task in the chat service. Same task, same queue, now in this process.
+    if settings.KB_WORKER_ENABLED and getattr(app.state, "db_service", None) is not None:
+        from app.kb_worker.worker import start_kb_worker
+        start_kb_worker(app, settings=settings, db_service=app.state.db_service)
+    elif not settings.KB_WORKER_ENABLED:
+        logger.info("KB queue worker disabled by KB_WORKER_ENABLED.")
+    else:
+        logger.warning("KB queue worker not started: no database service.")
+
     # --- Application is now running ---
     yield
     # --- Application is shutting down ---
 
     logger.info("Application shutdown...")
+
+    from app.kb_worker.worker import stop_kb_worker
+    await stop_kb_worker(app)
 
     # Disconnect services in reverse order of initialization
     if hasattr(app.state, 'http_client') and app.state.http_client:

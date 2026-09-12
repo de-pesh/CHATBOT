@@ -8,8 +8,8 @@
 #   docker compose down           # add -v to wipe the databases too
 #
 # The UI is on http://localhost:3006 (nginx redirects to /chatbot/).
-# The browser talks to chatbot-inferencing-service directly on :8003
-# (FE/src/main.tsx hardcodes that URL), so that port stays published.
+# The browser talks to main-service directly on :8000 (FE/src/main.tsx
+# hardcodes that URL), so that port stays published.
 #
 # Ports match GUIDE.md, so the layout is the same one start-all-services.sh
 # produced natively: main-service 8000, indexing-rpc 8001, inferencing 8003,
@@ -33,7 +33,7 @@ x-infra-env: &infra-env
   WORKER_ERROR_RETRY_DELAY: "5"
 
 # Queue names have to agree between producers and consumers. One queue is left:
-#   chatbot_queue  main-service -> chatbot-inferencing-service (in-process worker)
+#   chatbot_queue  main-service -> kb_worker, in the same process
 # parser_queue, llm_queue and assessment_kb_queue went with the assessment
 # pipeline - main-service opened a connection to each and nothing ever drained
 # them, so the settings were dropped from config.py too.
@@ -143,20 +143,27 @@ services:
     image: ccpm/main-service:local
     container_name: ccpm-main-service
     environment:
-      <<: [*infra-env, *queue-env, *blob-env]
+      <<: [*infra-env, *queue-env, *blob-env, *azure-openai-env]
       DEBUG: "True"
       # Local only: skips JWT validation so the UI works without an auth server.
       DISABLE_AUTH: "True"
       STORAGE_TYPE: "azure"
       AZURE_STORAGE_SAS_EXPIRY_MINUTES: "30"
-      CHATBOT_INFERENCING_SERVICE_URL: "http://chatbot-inferencing-service:8000"
       SECRET_KEY: "ccpm-local-dev-secret-key"
       ALGORITHM: "HS256"
       ACCESS_TOKEN_EXPIRE_MINUTES: "30"
+      # Chat and knowledge base, absorbed from chatbot-inferencing-service.
+      MONGODB_COLLECTION_NAME: "chatbot_policies"
+      # Ollama fallback, used only when the Azure OpenAI vars above are unset.
+      LLM_API_URL: "http://127.0.0.1:11434"
+      MODEL_NAME: "phi4"
+      TEMPERATURE: "0.1"
+      RPC_SERVER: "indexing-rpc-server:8001"
     ports:
       - "8000:8000"
     depends_on:
       mysql: {condition: service_healthy}
+      mongo: {condition: service_healthy}
       redis: {condition: service_healthy}
 
   indexing-rpc-server:
@@ -170,6 +177,9 @@ services:
         EPEL_RPM_URL: https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
         # Use "vendored" instead once vendor/gte-multilingual-base is populated.
         HF_MODEL_MODE: download
+        # tesseract* / qpdf / unpaper are not in UBI9 or EPEL9; skip rather than
+        # fail. Only scanned-PDF OCR needs them.
+        OCR_MODE: optional
     image: ccpm/indexing-rpc-server:local
     container_name: ccpm-indexing-rpc-server
     environment:
@@ -179,37 +189,6 @@ services:
       - "8001:8001"
     depends_on:
       mongo: {condition: service_healthy}
-
-  # Published on 8003 because FE/src/main.tsx points the browser at
-  # http://localhost:8003/chat; uvicorn listens on 8000 inside the container.
-  chatbot-inferencing-service:
-    <<: *svc-defaults
-    build:
-      context: ./chatbot-inferencing-service
-      args:
-        BASE_REGISTRY: registry.access.redhat.com
-        PIP_INDEX_URL: ""
-        PIP_TRUSTED_HOST: ""
-        EPEL_RPM_URL: https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
-        # tesseract* / qpdf / unpaper are not in UBI9 or EPEL9; skip rather than
-        # fail. Only scanned-PDF OCR needs them.
-        OCR_MODE: optional
-    image: ccpm/chatbot-inferencing-service:local
-    container_name: ccpm-chatbot-inferencing-service
-    environment:
-      <<: [*infra-env, *queue-env, *blob-env, *azure-openai-env]
-      MONGODB_COLLECTION_NAME: "chatbot_policies"
-      # Ollama fallback, used only when the Azure OpenAI vars above are unset.
-      LLM_API_URL: "http://127.0.0.1:11434"
-      MODEL_NAME: "phi4"
-      TEMPERATURE: "0.1"
-      RPC_SERVER: "indexing-rpc-server:8001"
-    ports:
-      - "8003:8000"
-    depends_on:
-      mysql: {condition: service_healthy}
-      mongo: {condition: service_healthy}
-      redis: {condition: service_healthy}
 
   # nginx serving the built SPA under /chatbot/. BUILD_SCRIPT=build:local drops
   # the Module Federation remote vite.qa.ts pulls from a public IP - the
@@ -228,7 +207,7 @@ services:
     ports:
       - "3006:8080"
     depends_on:
-      - chatbot-inferencing-service
+      - main-service
 
 networks:
   ccpm:

@@ -7,6 +7,7 @@ from app.services.embedding_service import EmbeddingService
 from app.services.mongo_service import MongoEmbeddingStore
 from app.config import get_settings
 from app.controllers.index_controller import index_handler
+from app.parsing import parsing_handler, OllamaService
 from app import indexing_service_pb2
 from app import indexing_service_pb2_grpc
 
@@ -18,6 +19,14 @@ azure_blob_service = AzureBlobService(
 )
 
 embedding_service = EmbeddingService(model_path=settings.EMBEDDING_MODEL_PATH)
+
+# Only reached for images and scanned pages; built once either way.
+ollama_client = OllamaService(
+    model=settings.OLLAMA_MODEL,
+    base_url=settings.OLLAMA_BASE_URL,
+    api_key=settings.OLLAMA_API_KEY.get_secret_value(),
+    temperature=settings.OLLAMA_TEMPERATURE,
+)
 
 
 class VectorServiceServer(indexing_service_pb2_grpc.VectorServiceServicer):
@@ -177,14 +186,43 @@ class VectorServiceServer(indexing_service_pb2_grpc.VectorServiceServicer):
             return indexing_service_pb2.SearchResponse()
 
 
-async def serve_vector_service():
-    server = grpc.aio.server(futures.ThreadPoolExecutor(max_workers=int(os.cpu_count())))
-    indexing_service_pb2_grpc.add_VectorServiceServicer_to_server(VectorServiceServer(), server)
-    server.add_insecure_port(f"[::]:{settings.GRPC_PORT}")
-    print(f"VectorService gRPC server is running on port {settings.GRPC_PORT}...")
-    await server.start()
-    await server.wait_for_termination()
+class ParsingServiceServer(indexing_service_pb2_grpc.ParsingServiceServicer):
+    """Implements the ParsingService gRPC service."""
+
+    async def ParseFile(self, request: indexing_service_pb2.ParseFileRequest, context):
+        """Extracts text from the blob at request.file_path.
+
+        The caller uploads the original and passes its blob path; the extracted
+        text is written back to blob and that path returned, ready to hand
+        straight to Index. Failures come back as success=False with the reason
+        rather than an empty path, so the caller does not have to guess.
+        """
+        try:
+            parsed_blob_path = await parsing_handler(
+                file_path=request.file_path,
+                azure_blob_service=azure_blob_service,
+                ollama_client=ollama_client,
+            )
+            if not parsed_blob_path:
+                return indexing_service_pb2.ParseFileResponse(
+                    success=False, message="Parsing produced no output.")
+            return indexing_service_pb2.ParseFileResponse(
+                success=True, blob_path=parsed_blob_path)
+        except Exception as e:
+            # A bad document must not take the server down, and the caller
+            # needs the reason: an unsupported extension and a corrupt PDF are
+            # different problems.
+            print(f"ParseFile failed for {request.file_path}: {e}")
+            return indexing_service_pb2.ParseFileResponse(
+                success=False, message=f"{type(e).__name__}: {e}")
 
 
 async def serve():
-    await serve_vector_service()
+    """Serves VectorService and ParsingService on the same port."""
+    server = grpc.aio.server(futures.ThreadPoolExecutor(max_workers=int(os.cpu_count())))
+    indexing_service_pb2_grpc.add_VectorServiceServicer_to_server(VectorServiceServer(), server)
+    indexing_service_pb2_grpc.add_ParsingServiceServicer_to_server(ParsingServiceServer(), server)
+    server.add_insecure_port(f"[::]:{settings.GRPC_PORT}")
+    print(f"VectorService and ParsingService gRPC server is running on port {settings.GRPC_PORT}...")
+    await server.start()
+    await server.wait_for_termination()

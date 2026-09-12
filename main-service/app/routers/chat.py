@@ -4,7 +4,7 @@ from fastapi import APIRouter, status, HTTPException, Depends, Query, Path
 # Controller
 from app.controllers.chat_controller import process_chat
 # Models
-from app.models.chat_model import(
+from app.models.chat import(
     Chat,
     ChatHistoryFilter,
     PaginatedChatHistory,
@@ -12,7 +12,7 @@ from app.models.chat_model import(
     PaginatedChatSessions,
     ChatSessionUpdate
 )
-from app.core.stored_procedures import StoredProcedures
+from app.stored_procedures import StoredProcedures
 # Services
 from app.services.ollama_service import OllamaService, get_ollama_client
 from app.services.database_service import DatabaseService

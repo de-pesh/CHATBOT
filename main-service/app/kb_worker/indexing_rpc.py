@@ -1,15 +1,30 @@
 import grpc
-import os
-import sys
 import logging
 from app.config import Settings
 # Protobuf imports
 from google.protobuf.json_format import ParseDict
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from app import indexing_service_pb2
 from app import indexing_service_pb2_grpc
 
 logger = logging.getLogger(__name__)
+
+
+async def parse_file_via_rpc(settings: Settings, blob_path: str) -> str:
+    """Extracts text from a blob via ParsingService, returning the parsed blob path.
+
+    The worker used to call parsing_handler in-process. Parsing now lives in the
+    compute service alongside the OCR toolchain, so this is the same operation
+    one hop away. Raises on failure: the caller's retry and dead-letter handling
+    is what should decide what happens next.
+    """
+    async with grpc.aio.insecure_channel(settings.RPC_SERVER) as channel:
+        stub = indexing_service_pb2_grpc.ParsingServiceStub(channel)
+        response = await stub.ParseFile(
+            indexing_service_pb2.ParseFileRequest(file_path=blob_path)
+        )
+    if not response.success:
+        raise ValueError(f"Parsing failed for {blob_path}: {response.message}")
+    return response.blob_path
 
 
 class IndexingRPCService:

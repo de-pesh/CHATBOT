@@ -4,8 +4,8 @@ Defines constants for stored procedure names.
 This module centralizes the names of stored procedures used throughout
 the application, ensuring consistency and reducing the chance of typos.
 
-It used to list 141 constants for the assessment, framework and RBAC domains.
-Only the seven below are called now; the rest went with those routers.
+It used to list 141 constants for the assessment, framework and RBAC domains;
+those went with their routers. What is left is the file, chat and user set.
 """
 
 
@@ -17,6 +17,13 @@ class StoredProcedures:
     FILTER_FILES = "filter_files"
     DELETE_FILE = "delete_file"
     GET_FILES_BY_ENTITY = "get_files_by_entity"
+
+    # Chat sessions and history.
+    UPSERT_CHATBOT_SESSION = "upsert_chatbot_session"
+    FILTER_CHATBOT_SESSIONS = "filter_chatbot_sessions"
+    DELETE_CHATBOT_SESSION = "delete_chatbot_session"
+    UPSERT_CHATBOT_HISTORY = "upsert_chatbot_history"
+    FILTER_CHATBOT_HISTORY = "filter_chatbot_history"
 
     # Users and permissions, for auth.
     #

@@ -1,10 +1,11 @@
 import logging
 from typing import List, Optional
 
-import aiohttp
 from fastapi import HTTPException, status
 
 from app.config import get_settings
+from app.services import kb_service
+from app.services.storage_service import FileStorageService
 from app.stored_procedures import StoredProcedures
 from app.models.files import FileCreate, FileInDB, FileType
 from app.services.database_service import DatabaseService
@@ -24,71 +25,13 @@ class FileController:
     def __init__(self,
             db_service: DatabaseService,
             redis_service: Optional[RedisQueueService] = None,
-            http_client: Optional[aiohttp.ClientSession] = None,
+            storage: Optional[FileStorageService] = None,
     ):
         self.db_service = db_service
         self.redis_service = redis_service
-        self.http_client = http_client
+        self.storage = storage
 
 
-    @staticmethod
-    async def push_to_knowledge_base(
-        http_client: aiohttp.ClientSession,
-        filename: str,
-        content_type: Optional[str],
-        file_bytes: bytes,
-    ) -> str:
-        """
-        Pushes a document into the chatbot-inferencing-service's knowledge base
-        (POST {CHATBOT_INFERENCING_SERVICE_URL}/kb) and returns its kb file_id.
-
-        This is a synchronous, opt-in call: if it fails, the caller should
-        surface the error rather than silently uploading without indexing,
-        since the caller explicitly asked for the document to be searchable.
-        """
-        settings = get_settings()
-        if not settings.CHATBOT_INFERENCING_SERVICE_URL:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="CHATBOT_INFERENCING_SERVICE_URL is not configured; cannot add file to knowledge base.",
-            )
-
-        form = aiohttp.FormData()
-        form.add_field(
-            "files",
-            file_bytes,
-            filename=filename,
-            content_type=content_type or "application/octet-stream",
-        )
-
-        kb_url = f"{settings.CHATBOT_INFERENCING_SERVICE_URL.rstrip('/')}/kb"
-        try:
-            async with http_client.post(kb_url, data=form) as response:
-                if response.status >= 400:
-                    body = await response.text()
-                    raise HTTPException(
-                        status_code=status.HTTP_502_BAD_GATEWAY,
-                        detail=f"Knowledge-base service returned {response.status}: {body}",
-                    )
-                results = await response.json()
-        except aiohttp.ClientError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail=f"Could not reach knowledge-base service: {exc}",
-            )
-
-        if not results:
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="Knowledge-base service returned an empty response.",
-            )
-        result = results[0]
-        if not result.get("success"):
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"Knowledge-base ingestion failed: {result.get('message')}",
-            )
-        return result["file_id"]
 
 
     async def find_file_id_by_kb_file_id(self, kb_file_id: str) -> Optional[int]:
@@ -117,62 +60,8 @@ class FileController:
         return None
 
 
-    async def delete_knowledge_base_document(self, kb_file_id: str) -> None:
-        """
-        Removes a document from the knowledge base by its vector-store ID,
-        surfacing any failure to the caller.
-
-        Unlike `_delete_from_knowledge_base` (which is best-effort, used when
-        cascading from a SQL file delete), this is for deletes the user asked
-        for directly, so errors must not be swallowed.
-
-        Args:
-            kb_file_id (str): The knowledge-base document ID (a UUID string).
-
-        Raises:
-            HTTPException: If the knowledge-base service is unconfigured,
-                unreachable, or reports a failure.
-        """
-        settings = get_settings()
-        if not self.http_client or not settings.CHATBOT_INFERENCING_SERVICE_URL:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="CHATBOT_INFERENCING_SERVICE_URL is not configured; cannot delete from the knowledge base.",
-            )
-        kb_url = f"{settings.CHATBOT_INFERENCING_SERVICE_URL.rstrip('/')}/kb/{kb_file_id}"
-        try:
-            async with self.http_client.delete(kb_url) as response:
-                if response.status >= 400:
-                    body = await response.text()
-                    raise HTTPException(
-                        status_code=status.HTTP_502_BAD_GATEWAY,
-                        detail=f"Knowledge-base service returned {response.status}: {body}",
-                    )
-        except aiohttp.ClientError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail=f"Could not reach knowledge-base service: {exc}",
-            )
 
 
-    async def _delete_from_knowledge_base(self, kb_file_id: str) -> None:
-        """Best-effort removal of a document from the knowledge base on file delete."""
-        settings = get_settings()
-        if not self.http_client or not settings.CHATBOT_INFERENCING_SERVICE_URL:
-            logger.warning(
-                f"Cannot delete kb_file_id={kb_file_id}: knowledge-base service not configured."
-            )
-            return
-        kb_url = f"{settings.CHATBOT_INFERENCING_SERVICE_URL.rstrip('/')}/kb/{kb_file_id}"
-        try:
-            async with self.http_client.delete(kb_url) as response:
-                if response.status >= 400:
-                    body = await response.text()
-                    logger.warning(
-                        f"Failed to delete kb_file_id={kb_file_id} from knowledge base: {response.status} {body}"
-                    )
-        except aiohttp.ClientError as exc:
-            logger.warning(f"Could not reach knowledge-base service to delete kb_file_id={kb_file_id}: {exc}")
 
 
     async def create_file(
@@ -345,7 +234,16 @@ class FileController:
                 [file_id, user_id]
             )
             if file_details.kb_file_id:
-                await self._delete_from_knowledge_base(file_details.kb_file_id)
+                # Best effort: the SQL record is already gone, and failing the
+                # whole delete because the vector store is unreachable would
+                # leave the caller with no way to retry.
+                try:
+                    await kb_service.delete_document(get_settings(), file_details.kb_file_id)
+                except Exception as e:
+                    logger.warning(
+                        f"File {file_id} deleted, but removing kb_file_id="
+                        f"{file_details.kb_file_id} from the knowledge base failed: {e}"
+                    )
             if self.redis_service:
                 message = {
                     "file_id": file_id,

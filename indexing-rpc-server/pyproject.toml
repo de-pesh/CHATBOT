@@ -20,6 +20,16 @@ sentence-transformers = "^4.0.2"
 # download.pytorch.org/whl/cpu, or the build cannot resolve torch.
 torch = {version = "^2.0", source = "pytorch-cpu"}
 langchain-text-splitters = "^0.3.8"
+
+# Document parsing (ParsingService.ParseFile), moved here from the chat
+# service so the OCR toolchain sits with torch in the compute image rather
+# than in the control plane. ocrmypdf also needs tesseract, ghostscript and
+# friends as RPMs - see the Dockerfile.
+pymupdf = "^1.25.5"
+pillow = "^11.2.1"
+ocrmypdf = "^16.10.2"
+openpyxl = "^3.1.5"
+langchain-azure-ai = "^0.1.5"
 grpcio = "^1.73.0"
 # The generated *_pb2.py stubs import google.protobuf directly, so it is a
 # real runtime dependency. It used to arrive transitively via grpcio-tools

@@ -17,8 +17,20 @@ aiomysql = "^0.2.0"
 redis = "5.2.1"
 webdavclient3 = "^3.14.6"
 
+# Chat, absorbed from chatbot-inferencing-service.
+grpcio = "^1.74.0"
+# The generated *_pb2.py stubs import google.protobuf directly; grpcio does not
+# depend on it, so it has to be declared.
+protobuf = "*"
+langchain-openai = "^0.3.0"
+langchain-ollama = "^0.3.7"
+langchain-core = "^0.3.0"
+motor = "^3.7.0"
+
 
 [tool.poetry.group.dev.dependencies]
+# Regenerates the *_pb2.py stubs from indexing-rpc-server/app/indexing_service.proto.
+grpcio-tools = "^1.74.0"
 pytest = "^8.4.1"
 
 [build-system]

@@ -13,7 +13,7 @@ from app.helpers.prompt_helper import fetch_new_query_prompt, fetch_final_prompt
 from app.helpers.context_helper import fetch_context, fetch_assessments_by_framework
 
 from app.config import Settings
-from app.models.chat_model import ChatResult
+from app.models.chat import ChatResult
 
 logger = logging.getLogger(__name__)
 
