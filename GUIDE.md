@@ -46,12 +46,13 @@ docker compose up -d --build main-service
 Six containers, scoped to **chatbot + document ingestion**:
 
 ```
-chat      FE -> main-service -> Search RPC -> indexing-rpc-server -> mongo
+chat      FE -> main-service -> Search RPC -> indexing-rpc-server -> vector store
                              -> Azure OpenAI
-ingest    FE/API -> main-service -> blob
+ingest    FE/API -> main-service -> file store
                                  -> ParseFile RPC -> indexing-rpc-server
-                                 -> Index RPC     -> indexing-rpc-server -> mongo
-                                 -> mysql (file record)
+                                 -> Index RPC     -> indexing-rpc-server -> vector store
+                                 -> database (file record)
+list      main-service -> ListDocuments RPC -> indexing-rpc-server -> vector store
 delete    main-service -> chatbot_queue -> kb_worker (same process)
                                         -> Delete RPC -> indexing-rpc-server
 ```
@@ -181,6 +182,40 @@ the model repo.
   is `vite.qa.ts` minus the Module Federation remote it fetches from a public
   IP. Nothing under `FE/src/` imports that remote.
 
+## Pluggable infrastructure
+
+Every backing service sits behind an interface with a factory in front of it,
+so swapping one is an environment variable plus an implementation - no edit to
+a startup path or a request handler.
+
+| Setting | Implemented | Interface |
+|---|---|---|
+| `DB_TYPE` | `mysql` | `main-service/app/services/database_service.py` |
+| `QUEUE_TYPE` | `redis` | `main-service/app/services/queue_service.py` |
+| `STORAGE_TYPE` | `local`, `azure`, `nextcloud` | `<service>/app/services/storage_service.py` |
+| `VECTOR_STORE` | `mongo` | `indexing-rpc-server/app/services/vector_store.py` |
+
+`STORAGE_TYPE=local` is the OpenShift target - a mounted PVC instead of Azure
+Blob. `STORAGE_TYPE=local docker compose up -d` runs the whole stack that way,
+with a shared `file-store` volume standing in for the PVC. See DEPLOY.md for
+the ReadWriteMany and `fsGroup` requirements, and for what a database swap
+actually costs (the data layer is stored procedures).
+
+Three things the seams depend on:
+
+* **`STORAGE_TYPE` must agree between the two services.** Only paths cross the
+  gRPC boundary, so both have to address the same store. It is set once in
+  compose, from `x-backend-env`, for exactly this reason.
+* **main-service holds no vector-database client.** Listing used to run a Mongo
+  aggregation in this process, which made the vector store pluggable for writes
+  only; it is `VectorService.ListDocuments` now.
+* **The chat path no longer calls Azure directly.** `citation_helper` used to
+  import `generate_blob_sas` from the Azure SDK, so switching `STORAGE_TYPE`
+  left chat still talking to Azure. Citation URLs come from
+  `get_download_url` on the configured backend, which returns None where there
+  is no public URL - the citation then stays plain text.
+
+
 ## Layout
 
 Two application images, a frontend and infrastructure.
@@ -191,7 +226,7 @@ main-service/app/            CONTROL PLANE - everything the API does
   controllers/               auth, chat, error, file
   helpers/                   citation, context, prompt (chat retrieval)
   kb_worker/                 chatbot_queue consumer
-  services/                  mysql, redis, azure blob, kb_service, ollama
+  services/                  *_factory.py + one file per backend, kb_service, ollama
   models/                    auth, chat, chat_errors, common, files
   security.py                JWT, bcrypt, the Permission enum
   stored_procedures.py       every MySQL stored-proc call
@@ -202,7 +237,8 @@ indexing-rpc-server/app/     COMPUTE PLANE - everything with a model in it
   rpc_server.py              VectorService + ParsingService on one port
   parsing/                   ParseFile: extraction and OCR
   services/embedding_service gte-multilingual-base, 768-dim
-  services/mongo_service     the vector store
+  services/vector_store.py   the vector database interface; mongo_service implements it
+  services/storage_service.py  the file store interface (a copy of main-service's)
   controllers/               chunking and indexing
   indexing_service.proto     the contract; stubs are generated from it
 

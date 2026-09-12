@@ -1,18 +1,26 @@
+"""Redis implementation of MessageQueueService.
+
+A sorted set used as a priority queue: ZADD to produce, BZPOPMIN to consume,
+with a retry count carried in each message and a dead-letter queue for tasks
+that exhaust it.
+
+This was the second of two RedisQueueService classes. The other lived in
+services/redis_service.py, produced messages without the retry metadata this
+one's consumer expects, and carried session helpers nothing called; it is gone
+and everything now produces and consumes through this one class.
+"""
 import asyncio
 import logging
 from datetime import datetime
-from urllib.parse import urlparse
 import json
 import uuid
-from typing import Optional, Dict, Any, Callable, Awaitable
+from typing import Optional, Dict, Any
 
 import aiohttp # Ensure aiohttp is installed
 from redis.asyncio import Redis
 import redis.exceptions as redis_exceptions
 
-
-# Define a type hint for the process function
-ProcessFuncType = Callable[[Dict[str, Any], str], Awaitable[None]]
+from app.services.queue_service import MessageQueueService, ProcessFuncType
 
 
 
@@ -76,23 +84,7 @@ async def add_error_log(
         print(f"AsyncDBLogHandler: Connection error for DB logging: {e}")
 
 
-def extract_blob_path_from_url(url: str) -> str:
-    """
-    Extracts the blob path from a given URL.
-
-    Args:
-        url (str): The URL containing the blob path.
-
-    Returns:
-        str: The extracted blob path.
-    """
-    # Split the URL by '/' and get the last segment
-    parsed_url = urlparse(url)
-    path_without_container = parsed_url.path.strip('/').split('/', 1)[1]
-    return path_without_container
-
-
-class RedisQueueService:
+class RedisQueueService(MessageQueueService):
     """
     an asynchronous service for interacting with Redis.
 

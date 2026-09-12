@@ -1,6 +1,5 @@
 from io import BytesIO
 from typing import List, Optional
-from urllib.parse import urlsplit
 import uuid
 from uuid import uuid4
 
@@ -20,7 +19,8 @@ from app.models.files import FileCreate, FileResponse, FileType
 from app.services import kb_service
 from app.services.database_service import DatabaseService
 from app.services.storage_service import FileStorageService
-from app.services.redis_service import RedisQueueService
+from app.utils import extract_blob_path_from_url
+from app.services.queue_service import MessageQueueService
 from app.security import Permission
 
 router = APIRouter()
@@ -39,7 +39,7 @@ async def create_files(
     file_type: FileType = FileType.FRAMEWORK,
     db_service: DatabaseService = Depends(get_db_service),
     file_storage_service: FileStorageService = Depends(get_file_storage_service),
-    chatbot_queue: RedisQueueService = Depends(get_chatbot_queue),
+    chatbot_queue: MessageQueueService = Depends(get_chatbot_queue),
     settings: Settings = Depends(get_settings),
 ) -> List[FileResponse]:
     """Endpoint to upload files and create file records."""
@@ -84,7 +84,7 @@ async def create_files(
     "/{file_id}",
     response_class=StreamingResponse,
     summary="Download a file by ID",
-    description="Downloads a file from Azure Blob Storage using its unique ID.",
+    description="Downloads a file from the configured file store using its unique ID.",
     dependencies=[Depends(has_permission([Permission.FILE_READ]))]
 )
 async def get_file_by_id(
@@ -96,7 +96,11 @@ async def get_file_by_id(
     """Endpoint to download a file by its ID."""
     controller = FileController(db_service)
     file_record = await controller.get_file_by_id(file_id)
-    blob_name = urlsplit(file_record.file_path).path.split('/')[-1]
+    # file_path is whatever the backend returned from upload_file: an absolute
+    # URL under Azure, a store-relative path under a mounted volume. This
+    # normalises both. It used to take the last path segment, which happened to
+    # work only because uploads land at the top level of the store.
+    blob_name = extract_blob_path_from_url(file_record.file_path)
     file_stream = await file_storage_service.download_file(blob_name)
     return StreamingResponse(file_stream, media_type=file_record.mimetype)
 
@@ -130,7 +134,7 @@ async def delete_file(
     file_id: str,
     current_user: CurrentUserDep,
     db_service: DatabaseService = Depends(get_db_service),
-    chatbot_queue: RedisQueueService = Depends(get_chatbot_queue),
+    chatbot_queue: MessageQueueService = Depends(get_chatbot_queue),
     settings: Settings = Depends(get_settings),
     file_storage_service: FileStorageService = Depends(get_file_storage_service),
 ) -> JSONResponse:

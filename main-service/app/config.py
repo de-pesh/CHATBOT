@@ -26,16 +26,36 @@ class Settings(BaseSettings):
         False,
         description="TEMPORARY: when true, bypasses JWT validation and permission checks on all endpoints. Must be false in production.",
     )
-    # --- Redis Settings ---
+    # --- Message queue ---
+    # QUEUE_TYPE picks the broker; see services/queue_factory.py.
+    QUEUE_TYPE: Literal["redis"] = Field("redis", description="Message queue backend")
     REDIS_URL: str = Field(..., description="Redis connection URL")
     REDIS_PASSWORD: Optional[SecretStr] = Field(None, description="Redis password (optional)")
     CHATBOT_QUEUE_NAME: str = Field(..., description="Name of the queue for chatbot tasks")
 
-    # Database configuration
+    # --- Database ---
+    # DB_TYPE picks the backend; see services/database_factory.py. Note that
+    # the data layer calls stored procedures, so a backend also needs its own
+    # scripts/*.sql - the connection string alone is not enough to move.
+    DB_TYPE: Literal["mysql", "mssql", "postgres"] = Field(
+        "mysql", description="Relational database backend"
+    )
     DB_CONNECTION_STRING: SecretStr
 
-    # File Storage Settings
-    STORAGE_TYPE: Literal["azure", "nextcloud"] = Field("azure", description="File storage service to use")
+    # --- File Storage ---
+    # 'local' is the OpenShift target: a mounted PVC shared with the compute
+    # service. 'azure' is what local development still uses.
+    STORAGE_TYPE: Literal["azure", "nextcloud", "local"] = Field("azure", description="File storage service to use")
+
+    # Local / persistent-volume storage (used if STORAGE_TYPE is 'local')
+    LOCAL_STORAGE_PATH: Optional[str] = Field(
+        None, description="Directory the file store lives in; a mounted PVC on OpenShift"
+    )
+    LOCAL_STORAGE_PUBLIC_URL: Optional[str] = Field(
+        None,
+        description="Optional base URL serving LOCAL_STORAGE_PATH over HTTP. Without it "
+                    "citations cannot be linkified and stay as plain text.",
+    )
 
     # Azure Blob Storage Settings (used if STORAGE_TYPE is 'azure') ---
     AZURE_STORAGE_ACCOUNT_URL: Optional[SecretStr] = Field(
@@ -75,9 +95,12 @@ class Settings(BaseSettings):
     AZURE_OPENAI_API_VERSION: str = Field("2024-05-01-preview", description="Azure OpenAI API version")
     AZURE_OPENAI_DEPLOYMENT_NAME: Optional[str] = Field(None, description="Azure OpenAI deployment name")
 
-    # --- Vector store (read directly for GET /kb; writes go through the RPC) ---
-    MONGO_CONNECTION_STRING: Optional[SecretStr] = Field(None, description="MongoDB connection URI")
-    MONGO_DATABASE_NAME: Optional[str] = Field(None, description="MongoDB database name")
+    # --- Vector store ---
+    # Only the collection name. Which vector database backs it, and how to
+    # reach it, is the compute service's business - this process holds no
+    # vector-database client and reaches the store solely through the RPCs
+    # below. MONGO_CONNECTION_STRING and MONGO_DATABASE_NAME used to live here
+    # for GET /kb, which ran its own Mongo aggregation.
     MONGODB_COLLECTION_NAME: str = Field("chatbot_policies", description="Collection holding the indexed chunks")
 
     # --- Compute service (gRPC): ParseFile, Index, Search, Update, Delete ---

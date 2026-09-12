@@ -88,3 +88,12 @@ class NextCloudFileStorage(FileStorageService):
         except Exception as e:
             logger.exception(f"Failed to delete file from Nextcloud: {file_name}")
             return False
+
+    def _blocking_exists(self, remote_path: str) -> bool:
+        """Synchronous helper for existence checks."""
+        client = Client(self.webdav_options)
+        return bool(client.check(remote_path))
+
+    async def exists(self, file_name: str) -> bool:
+        """Part of the FileStorageService contract; used before a parse."""
+        return await asyncio.to_thread(self._blocking_exists, file_name)

@@ -1,18 +1,23 @@
-"""
-This module provides utilities for generating secure, time-limited SAS URLs for Azure Blob Storage 
-and for embedding clickable links into chat citations based on recognized file references.
+"""Turns citation lines in an answer into links, when the storage backend can
+mint a URL for the cited document.
+
+This used to import `generate_blob_sas` from the Azure SDK and build the URL
+itself, which made a "pluggable" storage layer a fiction: switching
+STORAGE_TYPE left the chat path still calling Azure. URLs now come from the
+configured backend via `get_download_url`, which returns None for backends that
+have no public URL - a mounted volume, for instance. When it does, the citation
+is left as plain text rather than emitting a link that would not resolve.
 
 Functions:
-    - generate_sas_url: Generates a secure SAS URL for a given blob.
-    - linkify_citations: Replaces file mentions in response text with clickable links using SAS URLs.
+    - linkify_citations: Replaces file mentions in response text with links.
 """
+import logging
 import re
-from datetime import datetime, timedelta
-from urllib.parse import quote
-from azure.storage.blob import generate_blob_sas, BlobSasPermissions
-from app.config import get_settings
+from typing import Optional
 
-settings = get_settings()
+from app.services.storage_service import FileStorageService
+
+logger = logging.getLogger(__name__)
 
 pdf_url_map = {
     "CYBER INCIDENT RESPONSE FRAMEWORK.pdf": "GENAI/CPX/uploads/policy_pdfs/CYBER INCIDENT RESPONSE FRAMEWORK.pdf",
@@ -23,58 +28,49 @@ pdf_url_map = {
     "CRITICAL INFORMATION INFRASTRUCTURE PROTECTION (CIIP) POLICY.pdf": "GENAI/CPX/uploads/policy_pdfs/CRITICAL INFORMATION INFRASTRUCTURE PROTECTION (CIIP) POLICY.pdf",
 }
 
-def generate_sas_url(blob_name: str) -> str:
-    """
-    Generate a secure, time-limited SAS URL for a blob in Azure Storage.
+# "<file name>, Page: <n>" - the tail of a citation line, once the "Cited:" or
+# "- " prefix has been stripped. Stars are the model's bolding.
+CITATION_LINE = re.compile(r"^\**(.+?)\**,\s*Page[:\s]*(.+)$")
 
-    Args:
-        blob_name (str): The name (path) of the blob within the storage container.
 
-    Returns:
-        str: A full URL including SAS token, valid for 1 hour.
-    
-    Raises:
-        Exception: If SAS generation fails due to misconfiguration or Azure issues.
-    """
-
-    account_name = settings.AZURE_STORAGE_ACCOUNT_NAME
-    account_key = settings.AZURE_STORAGE_ACCOUNT_KEY
-    container_name = settings.AZURE_STORAGE_CONTAINER_NAME
-
-    sas_token = generate_blob_sas(
-        account_name=account_name,
-        container_name=container_name,
-        blob_name=blob_name,
-        account_key=account_key,
-        permission=BlobSasPermissions(read=True),
-        expiry=datetime.utcnow() + timedelta(hours=1)
+def _resolve_citation_url(storage: Optional[FileStorageService], file_name: str) -> Optional[str]:
+    """Maps a cited document name to a fetchable URL, or None if there is none."""
+    blob_name = (
+        pdf_url_map.get(file_name)
+        or pdf_url_map.get(f"{file_name}.pdf")
+        or pdf_url_map.get(file_name.replace(".pdf", "").strip())
     )
+    if not blob_name or storage is None:
+        return None
+    try:
+        return storage.get_download_url(blob_name)
+    except Exception:
+        logger.exception("Failed to build a download URL for %s", file_name)
+        return None
 
-    encoded_blob_name = quote(blob_name, safe='')
-    return f"https://{account_name}.blob.core.windows.net/{container_name}/{encoded_blob_name}?{sas_token}"
 
-
-def linkify_citations(response: str) -> str:
+def linkify_citations(response: str, storage: Optional[FileStorageService] = None) -> str:
     """
-    Replace citation references in a response string with clickable HTML links to documents.
+    Replace citation references in a response with links to the cited document.
 
-    Parses lines following a "Cited:" marker or bullet points, attempts to map filenames 
-    to known Azure blobs, and replaces file names with hyperlinks that open the corresponding 
-    document via a SAS URL.
+    Parses lines following a "Cited:" marker or bullet points, maps the file
+    name onto a stored document and, when the storage backend can produce a
+    fetchable URL, replaces the name with a hyperlink.
 
     Args:
         response (str): The original text response containing citations.
+        storage (Optional[FileStorageService]): The configured storage backend.
+            When None, or when the backend has no public URL for the document,
+            the line is left exactly as the model wrote it.
 
     Returns:
-        str: The modified response with embedded HTML links for citations.
-
-    Notes:
-        - If a citation file name is not found in `pdf_url_map`, the original text is left unchanged.
-        - If SAS URL generation fails for a specific blob, it logs an error and leaves the line unchanged.
+        str: The response, with citations linked where that was possible.
     """
+    if not response:
+        return response
+
     lines = response.strip().splitlines()
     new_lines = []
-
     in_cited_block = False
 
     for line in lines:
@@ -85,54 +81,29 @@ def linkify_citations(response: str) -> str:
             in_cited_block = True
             continue
 
-        if in_cited_block and stripped.startswith("- "):
-            match = re.match(r"-\s*\**(.+?)\**,\s*Page[:\s]*(.+)", stripped)
-            if match:
-                file_name, page_info = match.groups()
-                file_name = file_name.strip()
-                blob_name = (
-                    pdf_url_map.get(file_name) or
-                    pdf_url_map.get(f"{file_name}.pdf") or
-                    pdf_url_map.get(file_name.replace(".pdf", "").strip())
-                )
-
-                if blob_name:
-                    try:
-                        blob_url = generate_sas_url(blob_name)
-                        link = f"<a target='_blank' style='color:#eed202' href='{blob_url}'>{file_name}</a>"
-                        new_lines.append(f"- {link}, Page: {page_info.strip()}")
-                    except Exception as e:
-                        print(f"Failed to generate SAS for {file_name}: {e}")
-                        new_lines.append(line)
-                else:
-                    new_lines.append(line)
-            else:
-                new_lines.append(line)
-        elif stripped.startswith("Cited:"):
-            match = re.match(r"Cited:\s*\**(.+?)\**,\s*Page[:\s]*(.+)", stripped)
-            if match:
-                file_name, page_info = match.groups()
-                file_name = file_name.strip()
-                blob_name = (
-                    pdf_url_map.get(file_name) or
-                    pdf_url_map.get(f"{file_name}.pdf") or
-                    pdf_url_map.get(file_name.replace(".pdf", "").strip())
-                )
-
-                if blob_name:
-                    try:
-                        blob_url = generate_sas_url(blob_name)
-                        link = f"<a target='_blank' style='color:#eed202' href='{blob_url}'>{file_name}</a>"
-                        new_lines.append(f"Cited: {link}, Page: {page_info.strip()}")
-                    except Exception as e:
-                        print(f"Failed to generate SAS for {file_name}: {e}")
-                        new_lines.append(line)
-                else:
-                    new_lines.append(line)
-            else:
-                new_lines.append(line)
+        # "Cited: <file>, Page: n" on one line, or "- <file>, Page: n" under a
+        # "Cited:" header. Same substitution either way.
+        if stripped.startswith("Cited:"):
+            prefix, body = "Cited: ", stripped[len("Cited:"):].strip()
+        elif in_cited_block and stripped.startswith("- "):
+            prefix, body = "- ", stripped[2:].strip()
         else:
             in_cited_block = False
             new_lines.append(line)
+            continue
+
+        match = CITATION_LINE.match(body)
+        if not match:
+            new_lines.append(line)
+            continue
+
+        file_name, page_info = match.group(1).strip(), match.group(2).strip()
+        url = _resolve_citation_url(storage, file_name)
+        if not url:
+            new_lines.append(line)
+            continue
+
+        link = f"<a target='_blank' style='color:#eed202' href='{url}'>{file_name}</a>"
+        new_lines.append(f"{prefix}{link}, Page: {page_info}")
 
     return "\n".join(new_lines)

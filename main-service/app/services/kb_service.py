@@ -2,16 +2,20 @@
 
 The one place that talks to the compute service. Ingestion is three steps:
 
-    upload the original to blob
-      -> ParsingService.ParseFile(blob_path)   -> parsed text, back in blob
-      -> VectorService.Index(parsed_blob_path) -> embedded and stored in Mongo
+    upload the original to the file store
+      -> ParsingService.ParseFile(path)   -> parsed text, back in the store
+      -> VectorService.Index(parsed_path) -> embedded into the vector store
 
-The payload never crosses the RPC: both sides reach Azure Blob Storage, so only
-paths travel. Parsing used to run in-process in the chat service; it sits behind
+The payload never crosses the RPC: both services are configured against the
+same file store, so only paths travel. That is why STORAGE_TYPE has to match on
+both sides. Parsing used to run in-process in the chat service; it sits behind
 ParseFile now so the OCR toolchain stays out of this image.
 
-Listing reads Mongo directly rather than adding an RPC for it - it is a grouped
-count over metadata the indexer already writes, with no model involved.
+Listing goes through VectorService.ListDocuments. It used to run the grouping
+aggregation against Mongo from this process, which meant the control plane held
+a vector-database client and knew the chunk schema - so the "pluggable" vector
+store was only pluggable for writes. The compute service is now the only
+process that knows which vector database is in use.
 """
 import logging
 import uuid
@@ -19,7 +23,6 @@ from io import BytesIO
 from typing import List, Optional
 
 import grpc
-import motor.motor_asyncio
 from fastapi import HTTPException, status
 from google.protobuf.struct_pb2 import Struct
 from pydantic import BaseModel
@@ -46,18 +49,6 @@ class KBUploadResult(BaseModel):
     success: bool
     file_id: Optional[str] = None
     message: Optional[str] = None
-
-
-def _mongo_collection(settings: Settings):
-    if not settings.MONGO_CONNECTION_STRING or not settings.MONGO_DATABASE_NAME:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="MONGO_CONNECTION_STRING / MONGO_DATABASE_NAME are not configured.",
-        )
-    client = motor.motor_asyncio.AsyncIOMotorClient(
-        settings.MONGO_CONNECTION_STRING.get_secret_value()
-    )
-    return client[settings.MONGO_DATABASE_NAME][settings.MONGODB_COLLECTION_NAME]
 
 
 async def ingest_bytes(
@@ -109,19 +100,33 @@ async def ingest_bytes(
 
 
 async def list_documents(settings: Settings) -> List[KBDocument]:
-    """Groups the indexed chunks back into one row per source document."""
-    collection = _mongo_collection(settings)
-    pipeline = [
-        {"$match": {"metadata.isactive": True}},
-        {"$group": {
-            "_id": "$metadata.source_file_id",
-            "file_name": {"$first": "$metadata.file_name"},
-            "chunk_count": {"$sum": 1},
-        }},
-    ]
+    """One row per indexed document, from the compute service."""
+    try:
+        async with grpc.aio.insecure_channel(settings.RPC_SERVER) as channel:
+            stub = indexing_service_pb2_grpc.VectorServiceStub(channel)
+            response = await stub.ListDocuments(
+                indexing_service_pb2.ListDocumentsRequest(
+                    collection_name=settings.MONGODB_COLLECTION_NAME,
+                )
+            )
+    except grpc.aio.AioRpcError as e:
+        logger.exception("ListDocuments RPC failed")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Compute service unavailable: {e.details()}",
+        ) from e
+
+    if not response.success:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=response.message
+        )
     return [
-        KBDocument(file_id=d["_id"], file_name=d.get("file_name"), chunk_count=d["chunk_count"])
-        async for d in collection.aggregate(pipeline)
+        KBDocument(
+            file_id=d.file_id,
+            file_name=d.file_name or None,
+            chunk_count=d.chunk_count,
+        )
+        for d in response.documents
     ]
 
 

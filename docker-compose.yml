@@ -24,13 +24,37 @@
 x-infra-env: &infra-env
   REDIS_URL: "redis://redis:6379/0"
   DB_CONNECTION_STRING: "Server=mysql;UserID=root;Password=pass;Database=ccpm"
-  MONGO_CONNECTION_STRING: "mongodb://mongo:27017/?directConnection=true"
-  MONGO_DATABASE_NAME: "ccpm"
   DATABASE_SERVICE_URL: "http://main-service:8000"
   MAIN_SERVICE_URL: "http://main-service:8000"
   INDEXING_RPC_SERVER: "indexing-rpc-server:8001"
   WORKER_BRPOP_TIMEOUT: "5"
   WORKER_ERROR_RETRY_DELAY: "5"
+
+# Which implementation each piece of infrastructure uses. Every one is a
+# factory branch, so a backend swap is a value here plus credentials:
+#   DB_TYPE       mysql            main-service/app/services/database_factory.py
+#   QUEUE_TYPE    redis            main-service/app/services/queue_factory.py
+#   STORAGE_TYPE  azure|local|...  <service>/app/services/storage_factory.py
+#   VECTOR_STORE  mongo            indexing-rpc-server/app/services/vector_store_factory.py
+#
+# STORAGE_TYPE is shared between main-service and indexing-rpc-server on
+# purpose: only paths cross the RPC between them, so they must be looking at
+# the same store. Set it to "local" in BOTH (they already share the file-store
+# volume below) to run without Azure, which is what the OpenShift deployment
+# does with a ReadWriteMany PVC in place of that volume.
+x-backend-env: &backend-env
+  DB_TYPE: "mysql"
+  QUEUE_TYPE: "redis"
+  STORAGE_TYPE: "${STORAGE_TYPE:-azure}"
+  LOCAL_STORAGE_PATH: "/data/files"
+
+# Vector store. Only the compute service holds a client; main-service reaches
+# it through VectorService and knows nothing but the collection name.
+x-vector-env: &vector-env
+  VECTOR_STORE: "mongo"
+  MONGO_CONNECTION_STRING: "mongodb://mongo:27017/?directConnection=true"
+  MONGO_DATABASE_NAME: "ccpm"
+  VECTOR_COLLECTION_NAME: "chatbot_policies"
 
 # Queue names have to agree between producers and consumers. One queue is left:
 #   chatbot_queue  main-service -> kb_worker, in the same process
@@ -143,11 +167,10 @@ services:
     image: ccpm/main-service:local
     container_name: ccpm-main-service
     environment:
-      <<: [*infra-env, *queue-env, *blob-env, *azure-openai-env]
+      <<: [*infra-env, *backend-env, *queue-env, *blob-env, *azure-openai-env]
       DEBUG: "True"
       # Local only: skips JWT validation so the UI works without an auth server.
       DISABLE_AUTH: "True"
-      STORAGE_TYPE: "azure"
       AZURE_STORAGE_SAS_EXPIRY_MINUTES: "30"
       SECRET_KEY: "ccpm-local-dev-secret-key"
       ALGORITHM: "HS256"
@@ -161,6 +184,11 @@ services:
       RPC_SERVER: "indexing-rpc-server:8001"
     ports:
       - "8000:8000"
+    volumes:
+      # The file store, when STORAGE_TYPE=local. Mounted into the compute
+      # service too - one document is written here and read there. On
+      # OpenShift this is a ReadWriteMany PVC.
+      - file-store:/data/files
     depends_on:
       mysql: {condition: service_healthy}
       mongo: {condition: service_healthy}
@@ -183,10 +211,12 @@ services:
     image: ccpm/indexing-rpc-server:local
     container_name: ccpm-indexing-rpc-server
     environment:
-      <<: [*infra-env, *blob-env]
+      <<: [*infra-env, *backend-env, *vector-env, *blob-env]
       GRPC_PORT: "8001"
     ports:
       - "8001:8001"
+    volumes:
+      - file-store:/data/files
     depends_on:
       mongo: {condition: service_healthy}
 
@@ -217,3 +247,6 @@ volumes:
   redis-data:
   mongo-data:
   mysql-data:
+  # Stands in for the OpenShift PVC. Shared by main-service and
+  # indexing-rpc-server, which is what STORAGE_TYPE=local requires.
+  file-store:

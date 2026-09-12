@@ -17,7 +17,8 @@ from functools import partial
 from app.config import Settings
 from app.stored_procedures import StoredProcedures
 from app.kb_worker.indexing_rpc import IndexingRPCService
-from app.kb_worker.queue_service import RedisQueueService, extract_blob_path_from_url
+from app.services.queue_factory import create_queue_service
+from app.utils import extract_blob_path_from_url
 from app.kb_worker.indexing_rpc import parse_file_via_rpc
 from app.services.database_service import DatabaseService
 
@@ -175,18 +176,7 @@ async def run_kb_worker(
     db_service: DatabaseService,
 ):
     """Consume the chatbot queue until cancelled."""
-    redis_password = (
-        settings.REDIS_PASSWORD.get_secret_value() if settings.REDIS_PASSWORD else None
-    )
-
-    async with RedisQueueService(
-        queue_name=settings.CHATBOT_QUEUE_NAME,
-        redis_url=settings.REDIS_URL,
-        redis_password=redis_password,
-        decode_responses=True,
-        dlq_name=settings.CHATBOT_QUEUE_DLQ_NAME,
-        max_retries=settings.CHATBOT_QUEUE_MAX_RETRIES,
-    ) as queue:
+    async with create_queue_service(settings) as queue:
         logger.info("[KBWorker] watching queue '%s'", settings.CHATBOT_QUEUE_NAME)
         await queue.run_worker(
             process_func=partial(

@@ -28,7 +28,7 @@ from app.security import Permission
 from app.services import kb_service
 from app.services.database_service import DatabaseService
 from app.services.kb_service import KBDocument, KBUploadResult
-from app.services.redis_service import RedisQueueService
+from app.services.queue_service import MessageQueueService
 from app.services.storage_service import FileStorageService
 
 router = APIRouter()
@@ -83,7 +83,7 @@ async def delete_kb_document(
     current_user: CurrentUserDep,
     settings: Annotated[Settings, Depends(get_settings)],
     db_service: DatabaseService = Depends(get_db_service),
-    chatbot_queue: RedisQueueService = Depends(get_chatbot_queue),
+    chatbot_queue: MessageQueueService = Depends(get_chatbot_queue),
     storage: FileStorageService = Depends(get_file_storage_service),
 ) -> JSONResponse:
     """Endpoint to remove a single document from the knowledge base.

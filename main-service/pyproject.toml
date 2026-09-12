@@ -25,7 +25,6 @@ protobuf = "*"
 langchain-openai = "^0.3.0"
 langchain-ollama = "^0.3.7"
 langchain-core = "^0.3.0"
-motor = "^3.7.0"
 
 
 [tool.poetry.group.dev.dependencies]

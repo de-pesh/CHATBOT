@@ -6,9 +6,16 @@ from pymongo.errors import ConnectionFailure, OperationFailure
 from pymongo.operations import SearchIndexModel
 from pymongo.results import InsertManyResult, UpdateResult
 
-class MongoEmbeddingStore:
+from app.services.vector_store import VectorStore
+
+
+class MongoEmbeddingStore(VectorStore):
     """
-    A class to manage storing and searching embeddings in MongoDB using Motor, with logging.
+    MongoDB implementation of VectorStore, using Motor.
+
+    Atlas Vector Search for the similarity query, with a brute-force fallback
+    when the index is unavailable. See app/services/vector_store.py for the
+    contract another backend would have to meet.
     """
 
     def __init__(
@@ -568,6 +575,50 @@ class MongoEmbeddingStore:
         except Exception as e:
             logging.error(f"An unexpected error occurred during deactivation in '{collection.name}': {e}", exc_info=True)
             raise
+
+    async def list_documents(
+        self,
+        collection_name: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Groups the live chunks back into one entry per source document.
+
+        Behind VectorService.ListDocuments. main-service used to run this
+        aggregation itself against Mongo, which gave it a vector-store client
+        and a schema dependency it had no other use for.
+
+        Args:
+            collection_name: The collection to list; defaults to the configured one.
+
+        Returns:
+            A list of {file_id, file_name, chunk_count}, one per active document.
+        """
+        collection = await self._get_collection(collection_name)
+        if collection is None:
+            logging.error("list_documents: collection unavailable.")
+            return []
+
+        pipeline = [
+            {"$match": {"metadata.isactive": True}},
+            {"$group": {
+                "_id": "$metadata.source_file_id",
+                "file_name": {"$first": "$metadata.file_name"},
+                "chunk_count": {"$sum": 1},
+            }},
+        ]
+        try:
+            return [
+                {
+                    "file_id": doc["_id"] or "",
+                    "file_name": doc.get("file_name") or "",
+                    "chunk_count": doc.get("chunk_count", 0),
+                }
+                async for doc in collection.aggregate(pipeline)
+            ]
+        except OperationFailure as e:
+            logging.error("list_documents failed on '%s': %s", collection_name, e, exc_info=True)
+            raise
+
 
     # --- Context Manager Support ---
     async def __aenter__(self):

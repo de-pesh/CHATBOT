@@ -9,7 +9,7 @@ import os
 import uuid
 from enum import Enum
 
-from app.services.azure_blob_storage_service import AzureBlobService
+from app.services.storage_service import FileStorageService
 from app.parsing.extractors import (
     docx_helper,
     image_helper,
@@ -105,16 +105,15 @@ def parse_json(stringified_json: str) -> dict:
 
 async def parsing_handler(
         file_path: str,
-        azure_blob_service: AzureBlobService,
+        storage_service: FileStorageService,
         ollama_client: OllamaService
 ):
 
-    # Check if the file exists in Azure Blob Storage
-    if not await azure_blob_service.check_blob_exist(file_path):
-        logging.error(f"blob '{file_path}' does not exist, skipping this message")
-
+    # Check the file is actually in the store before doing any work.
+    if not await storage_service.exists(file_path):
+        logging.error(f"'{file_path}' does not exist in the file store, skipping this message")
     else:
-        print(f"blob '{file_path}' exists, proceeding with parsing")
+        print(f"'{file_path}' exists, proceeding with parsing")
 
     # Extract the filename and extension from the file path
     filename, ext = get_filename_and_extension(
@@ -131,8 +130,7 @@ async def parsing_handler(
     # Handle PDF files
     if ext == ValidExtension.PDF.value:
 
-        # Download the file as a stream from Azure Blob Storage
-        file_stream = await azure_blob_service.download_blob_stream(blob_path=file_path)
+        file_stream = await storage_service.download_file(file_path)
 
         # Extract text from the PDF file
         extracted_data = await pdf_helper(
@@ -143,8 +141,7 @@ async def parsing_handler(
     # Handle Word documents (.docx, .doc)
     elif ext in ValidExtension.WORD.value:
 
-        # Download the file as a stream from Azure Blob Storage
-        file_stream = await azure_blob_service.download_blob_stream(blob_path=file_path)
+        file_stream = await storage_service.download_file(file_path)
 
         # Extract text from the Word document
         extracted_data = await docx_helper(
@@ -155,8 +152,7 @@ async def parsing_handler(
 
     # Handle Images
     elif ext in ValidExtension.IMAGE.value:
-        # Download the file as a stream from Azure Blob Storage
-        file_stream = await azure_blob_service.download_blob_stream(blob_path=file_path)
+        file_stream = await storage_service.download_file(file_path)
 
         extracted_data = await image_helper(
             file_stream=file_stream,
@@ -165,22 +161,20 @@ async def parsing_handler(
 
     # Handle plain text files (.txt)
     elif ext == ValidExtension.TEXT.value:
-        # Download the file as a stream from Azure Blob Storage
-        file_stream = await azure_blob_service.download_blob_stream(blob_path=file_path)
+        file_stream = await storage_service.download_file(file_path)
 
         # Plain text needs no LLM/OCR; decode the bytes directly.
         extracted_data = await txt_helper(file_stream=file_stream)
 
     # Handle Excel workbooks (.xlsx)
     elif ext == ValidExtension.EXCEL.value:
-        # Download the file as a stream from Azure Blob Storage
-        file_stream = await azure_blob_service.download_blob_stream(blob_path=file_path)
+        file_stream = await storage_service.download_file(file_path)
 
         # Flatten every sheet/row into tab-delimited text.
         extracted_data = await xlsx_helper(file_stream=file_stream)
 
     # Guard against empty extractions. Uploading an empty string creates a
-    # 0-byte .txt blob that later crashes the indexing service with a
+    # 0-byte .txt file that later crashes the indexing service with a
     # misleading "input_text must be a non-empty string" error. Fail here with
     # a clear, actionable message at the correct layer instead.
     if not isinstance(extracted_data, str) or not extracted_data.strip():
@@ -196,10 +190,8 @@ async def parsing_handler(
     base_path = ''.join(file_path.rsplit(sep='/', maxsplit=2)[0])
     blob_path = f"{base_path}/texts/{get_uuid()}.txt"
 
-    # Upload the text data to Azure Blob Storage
-    await azure_blob_service.upload_text_to_blob(
-        blob_path=blob_path,
-        file_data=extracted_data
-    )
+    # Write the extracted text back to the store; the caller hands this path
+    # straight to Index.
+    await storage_service.upload_text(blob_path, extracted_data)
 
     return blob_path

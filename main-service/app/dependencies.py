@@ -5,7 +5,7 @@ from datetime import datetime
 
 from app.config import Settings, get_settings
 from app.services.database_service import DatabaseService
-from app.services.redis_service import RedisQueueService
+from app.services.queue_service import MessageQueueService
 from app.models.auth import CurrentUser
 from app.security import decode_access_token
 from app.services.storage_service import FileStorageService
@@ -32,8 +32,8 @@ def get_file_storage_service(request: Request) -> FileStorageService:
     return request.app.state.file_storage_service
 
 
-def get_chatbot_queue(request: Request) -> RedisQueueService:
-    """Dependency that provides the RedisQueueService instance for chatbot queue from the application state."""
+def get_chatbot_queue(request: Request) -> MessageQueueService:
+    """Dependency that provides the configured queue backend from the application state."""
     return request.app.state.redis_chatbot_queue
 
 

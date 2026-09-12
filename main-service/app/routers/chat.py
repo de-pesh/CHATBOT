@@ -18,8 +18,9 @@ from app.stored_procedures import StoredProcedures
 # Services
 from app.services.ollama_service import OllamaService, get_ollama_client
 from app.services.database_service import DatabaseService
+from app.services.storage_service import FileStorageService
 from app.config import Settings, get_settings
-from app.dependencies import get_db_service
+from app.dependencies import get_db_service, get_file_storage_service
 from app.helpers.citation_helper import linkify_citations
 
 logger = logging.getLogger(__name__)
@@ -160,6 +161,7 @@ async def chat(
     payload: Chat,
     ollama_client: Annotated[OllamaService, Depends(get_ollama_client)],
     db_service: Annotated[DatabaseService, Depends(get_db_service)],
+    storage: Annotated[FileStorageService, Depends(get_file_storage_service)],
 ):
     """
     Handles a chat interaction with the policy chatbot.
@@ -201,7 +203,7 @@ async def chat(
         )
         detected_intent = result.intent
         retrieved_collections = ", ".join(result.collections) if result.collections else None
-        response_with_citations = linkify_citations(result.response)
+        response_with_citations = linkify_citations(result.response, storage)
 
         await _record_success(
             db_service, history_id, conversation_id,
@@ -257,6 +259,7 @@ async def chat_stream(
     payload: Chat,
     ollama_client: Annotated[OllamaService, Depends(get_ollama_client)],
     db_service: Annotated[DatabaseService, Depends(get_db_service)],
+    storage: Annotated[FileStorageService, Depends(get_file_storage_service)],
 ):
     """Streams a chat turn to the client as Server-Sent Events.
 
@@ -299,7 +302,7 @@ async def chat_stream(
 
             detected_intent = result.intent
             retrieved_collections = ", ".join(result.collections) if result.collections else None
-            response_with_citations = linkify_citations(result.response)
+            response_with_citations = linkify_citations(result.response, storage)
 
             await _record_success(
                 db_service, history_id, conversation_id,

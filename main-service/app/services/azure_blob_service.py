@@ -4,7 +4,7 @@ Concrete implementation of the FileStorageService for Azure Blob Storage.
 import logging
 from io import BytesIO
 from datetime import datetime, timedelta
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, quote
 
 from azure.core.exceptions import ResourceNotFoundError
 from azure.storage.blob import (
@@ -170,6 +170,26 @@ class AzureBlobService(FileStorageService):
             raise
         finally:
             await blob_client.close()
+
+    async def exists(self, file_name: str) -> bool:
+        """Returns True if the blob is present."""
+        if not self._blob_service_client:
+            raise RuntimeError("AzureBlobService not initialized. Call initialize() first.")
+
+        blob_client = self._get_sas_blob_client(
+            self._normalize_blob_name(file_name),
+            BlobSasPermissions(read=True),
+        )
+        try:
+            return await blob_client.exists()
+        finally:
+            await blob_client.close()
+
+    def get_download_url(self, file_name: str) -> str:
+        """A read-only SAS URL for the blob, valid for the configured window."""
+        blob_name = self._normalize_blob_name(file_name)
+        sas = self._generate_blob_sas(blob_name, BlobSasPermissions(read=True))
+        return f"{self._account_url}/{self._container_name}/{quote(blob_name)}?{sas}"
 
     async def delete_file(self, file_name: str) -> bool:
         """Deletes a blob from Azure Blob Storage."""

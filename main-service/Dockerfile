@@ -47,6 +47,18 @@ COPY --chown=1001:0 . .
 # path the app touches must be group-writable.
 RUN chmod -R g=u /opt/app-root/src
 
+# Default mount point for STORAGE_TYPE=local. Created here, owned by 1001:0 and
+# group-writable, so that:
+#   * a fresh Docker named volume inherits these permissions when it is first
+#     mounted (Docker seeds an empty volume from the image), and
+#   * on OpenShift the arbitrary UID - always in group 0 - can write to the PVC
+#     mounted over it, given fsGroup on the pod.
+# Without this the store is root-owned 0755 and startup fails the writability
+# check in services/local_file_storage.py.
+USER 0
+RUN mkdir -p /data/files && chown -R 1001:0 /data && chmod -R g=u /data
+USER 1001
+
 ENV PYTHONUNBUFFERED=1 \
     HOME=/opt/app-root/src
 

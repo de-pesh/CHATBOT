@@ -6,10 +6,11 @@ from fastapi import HTTPException, status
 from app.config import get_settings
 from app.services import kb_service
 from app.services.storage_service import FileStorageService
+from app.utils import extract_blob_path_from_url
 from app.stored_procedures import StoredProcedures
 from app.models.files import FileCreate, FileInDB, FileType
 from app.services.database_service import DatabaseService
-from app.services.redis_service import RedisQueueService
+from app.services.queue_service import MessageQueueService
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,7 @@ class FileController:
 
     def __init__(self,
             db_service: DatabaseService,
-            redis_service: Optional[RedisQueueService] = None,
+            redis_service: Optional[MessageQueueService] = None,
             storage: Optional[FileStorageService] = None,
     ):
         self.db_service = db_service
@@ -243,6 +244,21 @@ class FileController:
                     logger.warning(
                         f"File {file_id} deleted, but removing kb_file_id="
                         f"{file_details.kb_file_id} from the knowledge base failed: {e}"
+                    )
+            if self.storage and file_details.file_path:
+                # The stored object used to be left behind: the row and the
+                # vector document went, the file did not. On Azure that leaked
+                # blobs; on a persistent volume it fills a fixed-size PVC.
+                # Best effort, like the vector removal above.
+                try:
+                    await self.storage.delete_file(
+                        extract_blob_path_from_url(file_details.file_path)
+                    )
+                    logger.info(f"Removed stored file for file_id {file_id}.")
+                except Exception as e:
+                    logger.warning(
+                        f"File {file_id} deleted, but removing it from the file "
+                        f"store failed: {e}"
                     )
             if self.redis_service:
                 message = {

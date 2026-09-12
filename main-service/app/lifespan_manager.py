@@ -17,11 +17,10 @@ from langchain_ollama import ChatOllama
 from app.config import get_settings, Settings
 from app.models.common import AsyncDBLogHandler
 from app.services.database_service import DatabaseService
-from app.services.mysql_service import MySQLService
+from app.services.database_factory import create_database_service
 from app.services.storage_service import FileStorageService
-from app.services.azure_blob_service import AzureBlobService
-from app.services.next_cloud_service import NextCloudFileStorage
-from app.services.redis_service import RedisQueueService
+from app.services.storage_factory import create_storage_service
+from app.services.queue_factory import create_queue_service
 
 logger = logging.getLogger("app")
 
@@ -59,78 +58,30 @@ async def lifespan(app: FastAPI):
 
 
     # --- Initialize Database Service ---
-    # There is one backend. DB_TYPE used to be Literal["mssql","postgres",
-    # "oracle"] dispatching a single branch - and the branch it dispatched,
-    # "oracle", constructed MySQLService. The DatabaseService ABC is the real
-    # seam if a second backend is ever added; the fake dispatch was not.
-    db_service: DatabaseService = MySQLService(
-        settings.DB_CONNECTION_STRING.get_secret_value()
-    )
+    # Backend chosen by DB_TYPE. Read the docstring in database_factory.py
+    # before assuming a swap is just a config change: the data layer is stored
+    # procedures, so a new backend needs its own port of scripts/*.sql.
+    db_service: DatabaseService = create_database_service(settings)
     await db_service.initialize()
     app.state.db_service = db_service
-    logger.info("MySQL database service connected.")
+    logger.info("Database service connected (DB_TYPE=%s).", settings.DB_TYPE)
 
      
     # --- Initialize File Storage Service ---
-    storage_service: FileStorageService
+    # Backend chosen by STORAGE_TYPE: 'local' (a mounted persistent volume),
+    # 'azure' or 'nextcloud'. The compute service must be pointed at the same
+    # store with the same setting - only paths cross the RPC between them.
+    storage_service: FileStorageService = create_storage_service(settings)
+    await storage_service.initialize()
+    app.state.file_storage_service = storage_service
+    logger.info("File storage initialized (STORAGE_TYPE=%s).", settings.STORAGE_TYPE)
 
-    if settings.STORAGE_TYPE == "azure":
-        account_url = settings.AZURE_STORAGE_ACCOUNT_URL.get_secret_value()
-        account_name = settings.AZURE_STORAGE_ACCOUNT_NAME.get_secret_value()
-        account_key = settings.AZURE_STORAGE_ACCOUNT_KEY.get_secret_value()
-        container_name = settings.AZURE_STORAGE_CONTAINER_NAME.get_secret_value()
-        sas_expiry_minutes = getattr(
-            settings,
-            "AZURE_STORAGE_SAS_EXPIRY_MINUTES",
-            30,
-        )
-
-        if not all([account_url, account_name, account_key, container_name]):
-            raise ValueError(
-                "AZURE_STORAGE_ACCOUNT_URL, AZURE_STORAGE_ACCOUNT_NAME, "
-                "AZURE_STORAGE_ACCOUNT_KEY, and AZURE_STORAGE_CONTAINER_NAME "
-                "are required for Azure storage."
-            )
-
-        storage_service = AzureBlobService(
-            account_url=account_url,
-            account_name=account_name,
-            account_key=account_key,
-            container_name=container_name,
-            sas_expiry_minutes=int(sas_expiry_minutes),
-        )
-
-        await storage_service.initialize()
-        app.state.file_storage_service = storage_service
-        logger.info("AzureBlobService initialized for file storage (dynamic SAS).")
-
-
-    elif settings.STORAGE_TYPE == "nextcloud":
-        url = settings.NEXTCLOUD_URL
-        user = settings.NEXTCLOUD_USERNAME.get_secret_value()
-        password = settings.NEXTCLOUD_PASSWORD.get_secret_value()
-        if not url or not user or not password:
-            raise ValueError("NEXTCLOUD_URL, NEXTCLOUD_USERNAME, and NEXTCLOUD_PASSWORD are required for Nextcloud storage.")
-        
-        storage_service = NextCloudFileStorage(
-            url=url,
-            user_name=user,
-            password=password
-        )
-        app.state.file_storage_service = storage_service
-        logger.info("NextCloudFileStorage initialized for file storage.")
-    else:
-        raise ValueError(f"Unsupported file storage type: {settings.FILE_STORAGE_TYPE}")
-
-    # --- Initialize Redis Services ---
-    redis_password = settings.REDIS_PASSWORD.get_secret_value() if settings.REDIS_PASSWORD else None
-    app.state.redis_chatbot_queue = RedisQueueService(
-        queue_name=settings.CHATBOT_QUEUE_NAME,
-        redis_url=settings.REDIS_URL,
-        redis_password=redis_password
-    )
+    # --- Initialize the message queue (producer side) ---
+    # Backend chosen by QUEUE_TYPE. The worker below opens its own connection
+    # through the same factory, so both agree on the DLQ and retry settings.
+    app.state.redis_chatbot_queue = create_queue_service(settings)
     await app.state.redis_chatbot_queue.initialize()
-    logger.info("Redis chatbot queue service initialized.")
+    logger.info("Message queue initialized (QUEUE_TYPE=%s).", settings.QUEUE_TYPE)
 
     # Create and store a shared aiohttp ClientSession for optimized HTTP requests
     # to other internal services (e.g. chatbot-inferencing-service).

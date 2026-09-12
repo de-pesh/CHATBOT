@@ -5,7 +5,7 @@ import warnings
 
 from app import indexing_service_pb2 as app_dot_indexing__service__pb2
 
-GRPC_GENERATED_VERSION = '1.73.1'
+GRPC_GENERATED_VERSION = '1.68.1'
 GRPC_VERSION = grpc.__version__
 _version_not_supported = False
 
@@ -54,6 +54,11 @@ class VectorServiceStub(object):
                 request_serializer=app_dot_indexing__service__pb2.UpdateRequest.SerializeToString,
                 response_deserializer=app_dot_indexing__service__pb2.UpdateResponse.FromString,
                 _registered_method=True)
+        self.ListDocuments = channel.unary_unary(
+                '/app.VectorService/ListDocuments',
+                request_serializer=app_dot_indexing__service__pb2.ListDocumentsRequest.SerializeToString,
+                response_deserializer=app_dot_indexing__service__pb2.ListDocumentsResponse.FromString,
+                _registered_method=True)
 
 
 class VectorServiceServicer(object):
@@ -83,6 +88,12 @@ class VectorServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def ListDocuments(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_VectorServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -105,6 +116,11 @@ def add_VectorServiceServicer_to_server(servicer, server):
                     servicer.Update,
                     request_deserializer=app_dot_indexing__service__pb2.UpdateRequest.FromString,
                     response_serializer=app_dot_indexing__service__pb2.UpdateResponse.SerializeToString,
+            ),
+            'ListDocuments': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListDocuments,
+                    request_deserializer=app_dot_indexing__service__pb2.ListDocumentsRequest.FromString,
+                    response_serializer=app_dot_indexing__service__pb2.ListDocumentsResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -215,6 +231,33 @@ class VectorService(object):
             '/app.VectorService/Update',
             app_dot_indexing__service__pb2.UpdateRequest.SerializeToString,
             app_dot_indexing__service__pb2.UpdateResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListDocuments(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/app.VectorService/ListDocuments',
+            app_dot_indexing__service__pb2.ListDocumentsRequest.SerializeToString,
+            app_dot_indexing__service__pb2.ListDocumentsResponse.FromString,
             options,
             channel_credentials,
             insecure,
