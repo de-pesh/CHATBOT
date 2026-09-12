@@ -161,8 +161,22 @@ the model repo.
   that, if disk becomes a problem.
 * **Azure Blob and Azure OpenAI are still external**, reached over the
   internet with the credentials in `.env`. Nothing local stands in for them.
-* The chat UI calls `http://localhost:8003/chat` directly - that address is
-  hardcoded in `FE/src/main.tsx`, which is why port 8003 is published.
+* The chat UI calls `http://localhost:8000/chat/stream` directly - that address
+  is hardcoded in `FE/src/main.tsx`, which is why port 8000 is published. In
+  production `API_ROUTES` comes from the host shell instead; if it does not
+  name `streamChatMessage`, the UI derives it from `sendChatMessage + /stream`.
+* **The answer streams.** `POST /chat/stream` emits Server-Sent Events:
+  `meta` (conversation id), `stage` (rephrasing / retrieving / generating /
+  finalising), `delta` (answer chunks), then `done` or `error`. `done.response`
+  is authoritative and replaces the concatenated deltas, because citations are
+  linkified and a non-English answer is translated after generation. Once the
+  stream opens the status is always 200, so failures arrive as an `error`
+  event. `POST /chat` still exists and runs the identical pipeline - it drains
+  the same generator - for any caller that cannot stream.
+* Two things would silently break streaming if changed: the response must keep
+  the `text/event-stream` content type (Starlette's `GZipMiddleware` excludes
+  only that type, and gzip buffering would hold the chunks back), and any proxy
+  in front must honour `X-Accel-Buffering: no`.
 * The frontend image is built with `build:local` (`FE/vite.local.ts`), which
   is `vite.qa.ts` minus the Module Federation remote it fetches from a public
   IP. Nothing under `FE/src/` imports that remote.
@@ -204,7 +218,7 @@ them on every deploy of it.
 ### What talks to what
 
 ```
-browser -> :8000 /chat            main-service
+browser -> :8000 /chat/stream     main-service  (SSE)
                                     -> Search RPC  -> compute -> mongo
                                     -> Azure OpenAI
 
@@ -244,7 +258,8 @@ Everything is on main-service, port 8000. 13 paths.
 ```
 GET    /health
 POST   /auth/authenticate | change-password | re-authenticate
-POST   /chat                        ask a question
+POST   /chat                        ask a question (blocking)
+POST   /chat/stream                 same, as SSE - the UI uses this one
 GET    /chat/history                past turns for a conversation
 GET    /chat/session                list sessions
 PATCH  /chat/session/{id}           rename

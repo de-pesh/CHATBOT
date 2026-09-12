@@ -59,9 +59,16 @@ app = FastAPI(
 )
 
 #App MIddleware
-origins = [    
+# Exact origins only - CORSMiddleware does not expand wildcards inside an
+# entry, so the "http://*:8000" that used to sit here matched nothing. 3006 is
+# where docker-compose publishes the UI, and it calls this service directly on
+# :8000, so without it every browser request (streaming included) is blocked.
+origins = [
     "http://localhost:3000",
-    "http://*:8000"]
+    "http://localhost:3006",
+    "http://127.0.0.1:3006",
+    "http://localhost:5173",  # vite dev server
+]
 
 app.add_middleware(
     CORSMiddleware,

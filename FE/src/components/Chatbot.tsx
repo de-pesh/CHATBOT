@@ -24,6 +24,7 @@ import HistoryIcon from "@mui/icons-material/History";
 import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
 import SearchIcon from "@mui/icons-material/Search";
 import { useAxiosApi } from "../hooks/useAxiosApi";
+import { streamChat, stageLabel } from "../hooks/useChatStream";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import Rating from "@mui/material/Rating";
 import ChatBubbleOutlineIcon from "@mui/icons-material/ChatBubbleOutline";
@@ -75,6 +76,10 @@ const Chatbot: React.FC<ChatbotProps> = ({
   const [getHistroy, setHistory] = useState<any[]>([]);
   const [conversationId, setConversationId] = useState<number | null>(null);
   const [input, setInput] = useState("");
+  // Streaming turn in flight. `loading` from useAxiosApi only covers the
+  // blocking fallback, so the send button tracks both.
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [stage, setStage] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"chat" | "prompts" | "history">(
     "chat",
   );
@@ -90,7 +95,7 @@ const Chatbot: React.FC<ChatbotProps> = ({
   const visibleChips = allChips.slice(0, maxVisible);
   const hiddenCount = allChips.length - visibleChips.length;
   const handleSend = async () => {
-    if (!input.trim()) return;
+    if (!input.trim() || isStreaming || loading) return;
 
     const userMessage = { sender: "user" as const, text: input };
     // `messages` holds the transcript as it stood before this turn, so the new
@@ -110,33 +115,78 @@ const Chatbot: React.FC<ChatbotProps> = ({
       ...(resolvedAssessmentId ? { assessment_id: resolvedAssessmentId } : {}),
     };
 
-    try {
-      const data = await request({
-        url: API_ROUTES?.Chatbot?.sendChatMessage,
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        data: payload,
+    // The assistant bubble is created by the first write rather than up front,
+    // so nothing empty sits on screen during the retrieval stage. After that it
+    // is always the last message, since sending is blocked while a turn runs.
+    let hasBubble = false;
+    const writeAssistant = (text: string) => {
+      setMessages((prev) => {
+        if (!hasBubble) {
+          return [...prev, { sender: "assistant" as const, text }];
+        }
+        const next = [...prev];
+        next[next.length - 1] = { ...next[next.length - 1], text };
+        return next;
       });
+      hasBubble = true;
+    };
 
-      if (data?.conversation_id) {
-        setConversationId(data.conversation_id);
+    // The host shell supplies API_ROUTES in production and may not know about
+    // the streaming route yet, so derive it from the chat URL when absent.
+    const streamUrl =
+      API_ROUTES?.Chatbot?.streamChatMessage ??
+      (API_ROUTES?.Chatbot?.sendChatMessage
+        ? `${API_ROUTES.Chatbot.sendChatMessage}/stream`
+        : undefined);
+
+    setIsStreaming(true);
+    setStage(null);
+    let accumulated = "";
+
+    try {
+      const streamed = streamUrl
+        ? await streamChat(streamUrl, payload, {
+            onMeta: (meta) => {
+              if (meta?.conversation_id) setConversationId(meta.conversation_id);
+            },
+            onStage: setStage,
+            onDelta: (text) => {
+              accumulated += text;
+              writeAssistant(accumulated);
+            },
+            onDone: (data) => {
+              if (data?.conversation_id) setConversationId(data.conversation_id);
+              // Authoritative text: translated if the question was not in
+              // English, and with citations linkified.
+              writeAssistant(data?.response || accumulated || "No response from bot.");
+            },
+            onError: (detail) => {
+              writeAssistant(accumulated ? `${accumulated}\n\n${detail}` : detail);
+            },
+          })
+        : false;
+
+      if (!streamed) {
+        // Streaming endpoint unreachable (older backend, proxy in the way).
+        // Fall back to the blocking one so the chat still works.
+        const data = await request({
+          url: API_ROUTES?.Chatbot?.sendChatMessage,
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          data: payload,
+        });
+
+        if (data?.conversation_id) {
+          setConversationId(data.conversation_id);
+        }
+        writeAssistant(data?.response || "No response from bot.");
       }
-
-      const assistantMessage = {
-        sender: "assistant" as const,
-        text: data?.response || "No response from bot.",
-      };
-
-      setMessages((prev) => [...prev, assistantMessage]);
     } catch (err) {
       console.error("Error sending message:", err);
-      setMessages((prev) => [
-        ...prev,
-        {
-          sender: "assistant" as const,
-          text: "Something went wrong. Please try again.",
-        },
-      ]);
+      writeAssistant("Something went wrong. Please try again.");
+    } finally {
+      setIsStreaming(false);
+      setStage(null);
     }
   };
 
@@ -359,9 +409,9 @@ const Chatbot: React.FC<ChatbotProps> = ({
           </Stack>
         </Box>
       ))}
-      {loading && (
-        <Typography variant="body2" sx={{ ml: 1 }}>
-          Bot is typing...
+      {(loading || isStreaming) && (
+        <Typography variant="body2" sx={{ ml: 1, color: "#5b6b82", fontStyle: "italic" }}>
+          {stageLabel(stage)}
         </Typography>
       )}
       {error && <Typography color="error">{error}</Typography>}
@@ -572,7 +622,11 @@ const Chatbot: React.FC<ChatbotProps> = ({
         onKeyDown={(e: any) => e.key === "Enter" && handleSend()}
         sx={{ marginRight: "8px" }}
       />
-      <IconButton sx={{ backgroundColor: "#4F81BD", color: "#fff" }} onClick={handleSend} disabled={loading}>
+      <IconButton
+        sx={{ backgroundColor: "#4F81BD", color: "#fff" }}
+        onClick={handleSend}
+        disabled={loading || isStreaming}
+      >
         <SendIcon />
       </IconButton>
     </Box>

@@ -9,6 +9,7 @@ import App from './App.tsx'
 const API_ROUTES = {
   Chatbot: {
     sendChatMessage: 'http://localhost:8000/chat',
+    streamChatMessage: 'http://localhost:8000/chat/stream',
     getChatHistory: 'http://localhost:8000/chat/history',
   },
 }

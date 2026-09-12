@@ -17,6 +17,8 @@ def fetch_new_query_prompt(chat_history, query, assessment_active: bool = False)
     - Asks the model to rephrase or split the query if necessary.
     - Ensures standalone questions remain unaltered.
     - Requests the model to output a structured JSON list of new questions.
+    - Asks for the query's language, so an English query can skip the separate
+      translation round trip in `format_translate_prompt` entirely.
     - When an assessment is active, also asks the model to classify the user's
       intent as "assessment" (about the specific assessment's controls, evidence,
       results) or "policy" (general framework/policy knowledge), so the caller can
@@ -33,6 +35,14 @@ def fetch_new_query_prompt(chat_history, query, assessment_active: bool = False)
 
     chat_history_str = str(chat_history)
 
+    # Reporting the query's language here costs nothing - this call already
+    # reads the query and already returns JSON - and lets the caller skip the
+    # separate translate round trip entirely when the query is English.
+    language_instruction = (
+        'Also report the language the latest user query is written in, as its '
+        'English name (for example "English", "French", "Arabic").\n'
+    )
+
     if assessment_active:
         intent_instructions = (
             "Also classify the latest user query's intent as exactly one of:\n"
@@ -48,7 +58,8 @@ def fetch_new_query_prompt(chat_history, query, assessment_active: bool = False)
             "First rephrased or standalone question.",
             "Second rephrased or standalone question (if applicable)."
         ],
-        "intent": "assessment"
+        "intent": "assessment",
+        "language": "English"
     }
     ```"""
     else:
@@ -58,15 +69,16 @@ def fetch_new_query_prompt(chat_history, query, assessment_active: bool = False)
         "new_questions": [
             "First rephrased or standalone question.",
             "Second rephrased or standalone question (if applicable)."
-        ]
+        ],
+        "language": "English"
     }
     ```"""
 
     query_prompt = f"""Rephrase the user's query using chat history only if needed for context.
     Do not answer the question.
-    If the query has multiple questions, split them.  
+    If the query has multiple questions, split them.
     **Do not rephrase a standalone question with no relevant history.**
-    {intent_instructions}
+    {intent_instructions}{language_instruction}
     Output in JSON like:
     {json_shape}
 
