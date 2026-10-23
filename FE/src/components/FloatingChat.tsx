@@ -4,29 +4,13 @@ import Chatbot from "./Chatbot";
 import { Box } from "../remote-ui-stubs";
 import ChatIcon from "@mui/icons-material/Chat";
 
-const getAssessmentIdFromPath = (pathname: string) => {
-  const match = pathname.match(
-    /\/(?:view-assesment|update-assesment|upload-evidence|assessment-version-details|review-assessment-approval)\/([^/?#]+)/
-  );
-
-  if (!match?.[1]) {
-    return undefined;
-  }
-
-  const assessmentId = Number(match[1]);
-
-  return Number.isFinite(assessmentId) && assessmentId > 0
-    ? assessmentId
-    : undefined;
-};
-
 interface FloatChatProps {
   chatMode?: "closed" | "fab" | "window" | "fullscreen";
   onClose?: () => void;
   onOpenFromFab?: () => void;
   API_ROUTES?: any;
   currentPathname?: string;
-  currentAssessmentId?: number;
+  authToken?: string;
 }
 
 const FloatingChatbot: React.FC<FloatChatProps> = ({
@@ -35,7 +19,7 @@ const FloatingChatbot: React.FC<FloatChatProps> = ({
   onOpenFromFab,
   API_ROUTES,
   currentPathname,
-  currentAssessmentId,
+  authToken,
 }) => {
   const [messages, setMessages] = useState<
     { sender: "user" | "assistant"; text: string }[]
@@ -43,7 +27,6 @@ const FloatingChatbot: React.FC<FloatChatProps> = ({
   const pathname = currentPathname ?? window.location.pathname;
 
   const isChatbotRoute = pathname.startsWith("/chatbot");
-  const assessmentId = currentAssessmentId ?? getAssessmentIdFromPath(pathname);
   const effectiveChatMode = chatMode ?? "fab";
   const showFab = !isChatbotRoute && effectiveChatMode === "fab";
   const showChat =
@@ -105,13 +88,12 @@ const FloatingChatbot: React.FC<FloatChatProps> = ({
             }}
           >
             <Chatbot
-              key={assessmentId ?? "no-assessment"}
               messages={messages}
               setMessages={setMessages}
               onClose={onClose}
               hideCloseButton={isFullscreen}
               API_ROUTES={API_ROUTES}
-              assessmentId={assessmentId}
+              authToken={authToken}
             />
           </Box>
         </ClickAwayListener>

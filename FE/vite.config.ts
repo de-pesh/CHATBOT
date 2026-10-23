@@ -3,6 +3,11 @@ import react from "@vitejs/plugin-react";
 import { federation } from "@module-federation/vite";
 
 export default defineConfig({
+  // The repo-root .env - the one config file - instead of a FE/.env of its own.
+  // Only VITE_* variables are put into the browser bundle; nothing else in that
+  // file (keys, connection strings) is ever exposed. A missing file is fine, as
+  // in the Docker build, where the value arrives as a build argument instead.
+  envDir: "..",
   plugins: [
     react(),
     federation({
@@ -32,7 +37,7 @@ export default defineConfig({
         // target:
         //   "https://eygenaistudio-apim-kubernetes-dev.azure-api.net/eygs-ctp/api",
         // target:"http://127.0.0.1:8000",
-        target: "http://74.162.89.207:80",
+        target: "http://127.0.0.1:8000",
         changeOrigin: true,
         secure: false, // ignore SSL issues if using self-signed certs
         rewrite: (path) => path.replace(/^\/api/, ""),

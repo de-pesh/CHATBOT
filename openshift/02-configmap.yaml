@@ -1,0 +1,264 @@
+# Non-secret settings. Fill in the <PLACEHOLDER> values - everything else is
+# a working default matching what was verified locally.
+#
+# Every OTHER tunable (chunk size, rerank depth, timeouts, index names, ...) is
+# optional: add it under `data:` of the ConfigMap for that service to override
+# its default. The full list, names and defaults, is .env.sample (sections 1-8).
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: main-service-config
+data:
+  # The single switch for auth, everywhere it's checked (app/dependencies.py's
+  # get_current_user and has_permission - every protected endpoint in every
+  # router goes through one of those two, nothing else gates on auth).
+  # Intentionally "True": this service is consumed via Module Federation
+  # behind a host app that already authenticates the user and controls who
+  # can reach this route at all, so this service is not the access-control
+  # boundary and does not need its own login. "False" enforces real JWT auth,
+  # which this repo does not yet have a backing implementation for (no users
+  # table, no login stored procedures) - see the "Auth is not
+  # production-ready" note in docs/openshift-deploy.md before flipping this
+  # for a deployment that is NOT fronted by such a host app.
+  # False: the UI shows a sign-in form and every conversation belongs to the account that had it (user
+  # isolation). True would fold every caller into one shared dev identity. Create the first accounts with
+  # the commands printed at the end of openshift/deploy.sh.
+  DISABLE_AUTH: "True"
+
+  # When True, tenant/identity context (entity_id, tenant_id, user_id, user_type)
+  # is read from the caller and stored on every new chatbot_session row.
+  # DISABLE_AUTH=False: values come from JWT claims. DISABLE_AUTH=True (Module
+  # Federation): values come from headers X-Entity-Id / X-Tenant-Id / X-User-Id
+  # / X-User-Type. Safe to flip on/off at runtime (old sessions keep their
+  # original context; new sessions pick up the live setting).
+  TENANT_CONTEXT_ENABLED: "False"
+
+  # The origin the browser actually calls this API from - typically the
+  # Module Federation host app's route, not this repo's own frontend route.
+  # Comma-separate more than one. Required or /chat and /chat/stream are
+  # blocked by CORS from that origin.
+  CORS_ALLOWED_ORIGINS: "https://chatbot-api.apps.dda-desc-az1-01.desccii.local"
+
+  DB_TYPE: "mssql"
+  # "celery": main-service only sends ingest tasks; the kb-worker pod
+  # (05b-deployment-kb-worker.yaml) runs them, CELERY_CONCURRENCY files at once.
+  # "redis": the older in-process worker inside main-service (one file at a time
+  # per replica) - the kb-worker pod is then unused.
+  QUEUE_TYPE: "celery"
+  CELERY_CONCURRENCY: "2"
+  # Optional Celery tuning (defaults shown): the Redis list used, how long past
+  # WORKER_LEASE_SECONDS the broker waits before re-delivering an unacknowledged
+  # task, and how long after the first file of a burst the catalog is refreshed.
+  # CELERY_QUEUE_NAME: "chatbot_queue_celery"
+  # CELERY_VISIBILITY_MARGIN_SECONDS: "300"
+  # CELERY_CATALOG_REFRESH_DELAY_SECONDS: "30"
+
+  # --- Chat safeguards and records (defaults shown; every one is optional) ---
+  # Turns per user per minute on /chat and /chat/stream; 0 = no limit.
+  # CHAT_RATE_LIMIT_PER_MINUTE: "30"
+  # Answer with NO_EVIDENCE_REPLY, without calling the model, when the search finds nothing usable.
+  # NO_EVIDENCE_GATE_ENABLED: "True"
+  # Drop hits the store scores below this before the rerank; 0 = keep everything. Read `top_score`
+  # in GET /admin/chat-trace/{id} for real turns before choosing a value.
+  # MIN_RELEVANCE_SCORE: "0"
+  # A second model that answers when the main one fails.
+  LLM_FALLBACK_MODEL: "glm-5"
+  # Per-turn trace (GET /admin/chat-trace/{id}) and how long it and the audit log are kept; 0 = forever.
+  # TRACE_ENABLED: "True"
+  # TRACE_MAX_HITS: "30"
+  # TRACE_QUERY_MAX_CHARS: "300"
+  # TRACE_RETENTION_DAYS: "180"
+  # AUDIT_RETENTION_DAYS: "365"
+  CHATBOT_QUEUE_NAME: "chatbot_queue"
+  CHATBOT_QUEUE_DLQ_NAME: "chatbot_queue_dlq"
+  CHATBOT_QUEUE_MAX_RETRIES: "3"
+
+  # "local" = the mounted PVC (03-pvc.yaml) - the OpenShift target. Set to
+  # "azure" instead only if you are intentionally keeping Azure Blob; that
+  # needs AZURE_STORAGE_* added back into 01-secrets.yaml and here.
+  STORAGE_TYPE: "local"
+  LOCAL_STORAGE_PATH: "/data/files"
+
+  # Optional: a URL that serves the same PVC over plain HTTP (e.g. a
+  # separate route/ingress onto the volume). Without it, citations to
+  # uploaded documents degrade to plain text instead of links - STORAGE_TYPE
+  # =local has no public URL of its own, unlike Azure Blob's SAS links. See
+  # docs/deploy.md's "Replacing Azure Blob with persistent storage" section.
+  # LOCAL_STORAGE_PUBLIC_URL: "https://<HOST_SERVING_DATA_FILES_OVER_HTTP>"
+
+  KB_WORKER_ENABLED: "True"
+  WORKER_BRPOP_TIMEOUT: "5"
+  WORKER_ERROR_RETRY_DELAY: "5"
+
+  # Base URL of the parsing-indexing-service Service (07-services.yaml) - must
+  # match its name and PORT (indexing-rpc-server-config below) exactly. Only
+  # document ingestion (Index, Delete, ParseFile) goes over this - Search
+  # itself runs in-process in main-service, see the Mongo/embedding block below.
+  INDEXING_SERVICE_URL: "http://parsing-indexing-service:8001"
+  # Must equal VECTOR_COLLECTION_NAME in indexing-rpc-server-config below -
+  # nothing enforces that at startup, since the two services never see each
+  # other's ConfigMap. A mismatch does not crash-loop either side; it just
+  # makes indexing and search operate on different Mongo collections, so keep
+  # them in one edit.
+  MONGODB_COLLECTION_NAME: "chatbot_policies"
+
+  # --- Vector store & query-time embedding (Search runs in-process here - see
+  # app/services/vector/, app/services/embedding/). Must describe the SAME
+  # Mongo collection and the SAME embedding model as indexing-rpc-server-config
+  # below: the vectors main-service searches are the ones indexing-rpc-server
+  # wrote, so a mismatch does not crash-loop, it just searches nonsense.
+  # MONGO_CONNECTION_STRING is in main-service-secrets (same value as
+  # indexing-rpc-server-secrets' - one Mongo, two services reading it).
+  VECTOR_STORE: "mongo"
+  MONGO_DATABASE_NAME: "chatbot"
+  # "litellm" and "remote" are the same client under two names - either works.
+  # Must NOT be "local": this service does not ship torch (see its
+  # embedding_factory.py) - EMBEDDING_TYPE=local is only for indexing-rpc-server.
+  EMBEDDING_TYPE: "litellm"
+  # Same shared corporate LiteLLM proxy as this file's chat LITELLM_BASE_URL,
+  # and as indexing-rpc-server-config's own EMBEDDING_BASE_URL - all three
+  # values below must match indexing-rpc-server-config's embedding block exactly.
+  EMBEDDING_BASE_URL: "https://llmapi.govai.ae"
+  EMBEDDING_MODEL_NAME: "qwen3-embedding-8b-mig"
+  EMBEDDING_DIMENSION: "4096"
+
+  ALGORITHM: "HS256"
+  ACCESS_TOKEN_EXPIRE_MINUTES: "30"
+
+  # --- Chat LLM backend (see main-service-secrets for the key) ---
+  # LLM_TYPE picks it, and one file per backend sits behind
+  # main-service-chatbot/app/services/llm/chat_llm_factory.py:
+  #   litellm  LITELLM_BASE_URL + LITELLM_MODEL_NAME here, LITELLM_API_KEY in
+  #            the Secret.
+  #   azure    AZURE_OPENAI_ENDPOINT + _API_VERSION + _DEPLOYMENT_NAME here,
+  #            AZURE_OPENAI_API_KEY in the Secret (commented out there).
+  #   ollama   MODEL_NAME + LLM_API_URL here, no key.
+  #   aws      AWS_REGION + AWS_BEDROCK_MODEL_ID here. Credentials: an IAM role
+  #            (IRSA / pod identity) needs none; otherwise AWS_ACCESS_KEY_ID +
+  #            AWS_SECRET_ACCESS_KEY in the Secret (commented out there), both or
+  #            neither.
+  #   google   GOOGLE_MODEL_NAME here, GOOGLE_API_KEY in the Secret (commented
+  #            out there).
+  # Whatever LLM_TYPE names must have all its settings, or main-service stops at
+  # startup naming the missing one - see docs/openshift-deploy.md.
+  # Points at the LiteLLM proxy: same host for chat here, embeddings and vision
+  # in indexing-rpc-server-config below. What the proxy routes the alias to
+  # (Azure, Bedrock, a local model) is entirely the proxy's own config, not
+  # this file's business - see docs/openshift-release.md step 0 for what to
+  # check on the proxy before filling these in (the model alias, and whether
+  # it accepts reasoning_effort - drop the two LLM_*_REASONING_EFFORT lines
+  # below if it rejects the parameter, as many non-reasoning models do).
+  LLM_TYPE: "litellm"
+  # Shared corporate LiteLLM proxy (same one ai-threatgen points at - see
+  # openshift/ref.yaml, which is git-ignored). The model alias below is
+  # still per-app - ask the proxy owner which alias and virtual key this
+  # deployment should use, same as LITELLM_API_KEY in 01-secrets.yaml.
+  LITELLM_BASE_URL: "https://llmapi.govai.ae"
+  LITELLM_MODEL_NAME: "kimi-k2.5"
+  # Lighter model alias for the short steps around the answer (query rewrite,
+  # rerank, translation) - much faster than sending them to the answer model.
+  # Any alias the same LiteLLM proxy serves; change it here to swap models.
+  # Uncomment and set to an alias that exists on the proxy. Omitted = the answer
+  # model does everything. Per-step overrides: LLM_REWRITE_MODEL /
+  # LLM_RERANK_MODEL / LLM_TRANSLATE_MODEL / LLM_INTENT_MODEL / LLM_DESCRIBE_MODEL
+  # ("main" = answer model). The intent step answers a greeting or "what do you have?"
+  # without searching; the describe step writes the one-line description of each
+  # document in the knowledge-base catalog. INTENT_ROUTING_ENABLED: "false" turns
+  # the intent step off. KB_OVERVIEW_ENABLED: "true" lets the bot tell users which
+  # documents the knowledge base holds; left "false" (the default), the catalog
+  # stays out of every prompt.
+  # LLM_HELPER_MODEL: "<LIGHT_MODEL_ALIAS_ON_LITELLM_PROXY>"
+  # Only when the model behind the alias is a reasoning model (gpt-5, o-series),
+  # which "thinks" for seconds first: minimal cuts the helper steps ~2x and the
+  # answer's first word from ~15s to ~3s. Any other model rejects the parameter.
+  # LLM_AUX_REASONING_EFFORT: "minimal"
+  # LLM_ANSWER_REASONING_EFFORT: "minimal"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: indexing-rpc-server-config
+data:
+  STORAGE_TYPE: "local"
+  LOCAL_STORAGE_PATH: "/data/files"
+  VECTOR_STORE: "mongo"
+  MONGO_DATABASE_NAME: "chatbot"
+  # Must equal MONGODB_COLLECTION_NAME in main-service-config above - see the
+  # comment there.
+  VECTOR_COLLECTION_NAME: "chatbot_policies"
+  PORT: "8001"
+
+  # false = ANN (approximate, HNSW - the Atlas default, scales better). true =
+  # ENN (exact/exhaustive - always the true nearest neighbours, scales worse).
+  # No effect if MONGO_CONNECTION_STRING isn't a real Atlas cluster - that path
+  # already always runs an exact brute-force fallback. See docs/deploy.md.
+  VECTOR_SEARCH_EXACT: "false"
+
+  # Refuse a multi-page document when more than this share of its pages parse to nothing
+  # (a scan the OCR could not read); 1.0 turns the check off.
+  # MAX_BLANK_PAGE_SHARE: "0.5"
+
+  # Lexical half of hybrid search: "bm25" (default; in-process, stemmed, keeps control
+  # ids like T3.2.2 whole) or "text" (MongoDB's $text index).
+  # LEXICAL_SEARCH: "bm25"
+
+  # --- Embedding model, through the same LiteLLM proxy as the LLMs ---
+  # The embedding model is called over HTTP, so the image is built with
+  # --build-arg EMBEDDING_MODE=remote (no torch, no baked-in model; see
+  # docs/openshift-release.md). Alias = the model_name the proxy's config
+  # gives an embeddings model. EMBEDDING_DIMENSION must equal what that model
+  # returns; if it is wrong the pod refuses to start and the log names the real
+  # number - check it with the curl in docs/openshift-release.md step 0 before
+  # filling this in. Changing the embedding model later means re-embedding the
+  # knowledge base once:
+  #   oc exec deploy/parsing-indexing-service -- python -m app.tools.reindex
+  # "litellm" and "remote" are the same client under two names (see
+  # remote_embedding_service.py) - either works here. Other choices for
+  # EMBEDDING_TYPE: "azure" (an Azure OpenAI / Foundry deployment directly),
+  # "local" (a model baked into an image built WITHOUT EMBEDDING_MODE=remote).
+  EMBEDDING_TYPE: "litellm"
+  # Same shared corporate LiteLLM proxy as main-service-config's
+  # LITELLM_BASE_URL - see the comment there.
+  EMBEDDING_BASE_URL: "https://llmapi.govai.ae"
+  EMBEDDING_MODEL_NAME: "qwen3-embedding-8b-mig"
+  EMBEDDING_DIMENSION: "4096"
+  # EMBEDDING_SEND_DIMENSIONS: "false"   # "true" if the model can shorten its output to EMBEDDING_DIMENSION
+  # EMBEDDING_BATCH_SIZE: "64"           # texts per request; lower it if the proxy rejects large batches
+
+  # MIME-type inspection: the Tika pod from 09-deployment-tika.yaml detects the
+  # actual content type of each uploaded file before parsing begins. Remove this
+  # line if you do not deploy Tika - parsing still works, MIME mismatches are
+  # just logged as warnings rather than caught early.
+  # Legacy .doc/.ppt conversion uses LibreOffice (soffice, baked into the image)
+  # not Tika, so Tika deployment is optional.
+  TIKA_URL: "http://tika:9998"
+
+  # --- Vision LLM backend (see indexing-rpc-server-secrets for the key) ---
+  # Used by ParseFile for images/scanned pages only - every other file type
+  # parses without it. This cluster has no vision model, so "none": a scanned
+  # PDF is then read by tesseract alone (the image must have tesseract and
+  # qpdf - see OCR_PACKAGES) and an image upload is refused. To add one later:
+  # litellm | azure | foundry | ollama | openai, one file per backend behind
+  # parsing-indexing-service/app/parsing/vision/vision_llm_factory.py.
+  # Naming a backend whose settings are incomplete stops the service at startup;
+  # "none" does not. "openai" takes VISION_OPENAI_BASE_URL / _MODEL here and
+  # VISION_OPENAI_API_KEY in the secret.
+  VISION_LLM_TYPE: "none"
+
+  # --- Celery worker (runs as a separate pod - see 05b-deployment-kb-worker.yaml) ---
+  # How many ingest tasks run at once inside the worker sidecar. The worker
+  # mostly waits on the embedding endpoint and Mongo, so threads > CPU cores
+  # is normal. Raise it here (or with `oc set env`) when uploads queue up.
+  CELERY_CONCURRENCY: "2"
+  # Must match main-service-config's CHATBOT_QUEUE_NAME exactly - the sender
+  # (main-service) and the consumer (this worker) must use the same Redis list.
+  CHATBOT_QUEUE_NAME: "chatbot_queue"
+  # How many times to retry a failed ingest before dead-lettering it.
+  CHATBOT_QUEUE_MAX_RETRIES: "3"
+  # Seconds between retries on a transient ingest failure.
+  WORKER_ERROR_RETRY_DELAY: "5"
+  # After a successful ingest the worker calls this URL so main-service can
+  # refresh its knowledge-base catalog descriptions. Leave blank to skip.
+  MAIN_SERVICE_URL: "http://main-service:8000"

@@ -1,7 +1,19 @@
-# Generated protobuf stubs are excluded: their `import ... as
-# google_dot_protobuf_dot_struct__pb2` line looks unused to static analysis, but
-# importing it is what registers google/protobuf/struct.proto in the descriptor
-# pool. Removing it makes every service that loads these stubs die at import
-# with "Depends on file 'google/protobuf/struct.proto', but it has not been
-# loaded". Never lint or autofix generated code.
-extend-exclude = ["*_pb2.py", "*_pb2_grpc.py"]
+target-version = "py312"
+
+[lint]
+# Real problems (E4/E7/E9/F, bugbear), plus import order, current-Python syntax and root-logger use.
+select = ["E4", "E7", "E9", "F", "B", "I", "UP", "SIM", "PIE", "LOG"]
+ignore = [
+    "B008",  # FastAPI's Depends()/File()/Query() in argument defaults is the framework idiom
+    "B905",  # zip() without strict=: every zip here pairs lists built together
+    "B027",  # empty optional hooks on the backend interfaces are intentional, not abstract
+    "UP042",  # (str, Enum) is kept: StrEnum changes str()/format() output, and these are compared as strings
+]
+
+[lint.per-file-ignores]
+# The logging setup itself, before any logger is configured, has to use the root logger.
+"main-service-chatbot/app/observability.py" = ["LOG015"]
+# FastAPI calls this handler outside an except block; the exception is the argument.
+"main-service-chatbot/app/controllers/error_controller.py" = ["LOG004"]
+# Auth is kept exactly as it is behind DISABLE_AUTH.
+"main-service-chatbot/app/security.py" = ["B904"]

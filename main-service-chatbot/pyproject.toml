@@ -1,0 +1,53 @@
+[tool.poetry]
+name = "main-service-chatbot"
+version = "0.1.0"
+description = ""
+authors = ["Prashant Singh <prashant.singh3@in.ey.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+fastapi = {extras = ["all"], version = "^0.116.1"}
+uvicorn = {extras = ["standard"], version = "^0.35.0"}
+aiohttp = "^3.12.14"
+# Used directly for the LLM warm-connection client (lifespan_manager.py) and now
+# also for the compute service's REST API (kb_worker/indexing_rpc.py,
+# services/kb/kb_service.py) - previously only pulled in transitively.
+httpx = "*"
+bcrypt = "^4.1.3"
+python-jose = {extras = ["cryptography"], version = "^3.3.0"}
+azure-storage-blob = "^12.25.1"
+# Pure-Python TDS client for DB_TYPE=mssql - no ODBC driver or system package
+# to install, unlike pyodbc + Microsoft's own msodbcsql. See mssql_service.py.
+python-tds = "^1.17.1"
+# python-tds drives TLS (Encrypt=yes in DB_CONNECTION_STRING, services/db/mssql_tls.py) through pyOpenSSL.
+pyopenssl = ">=24.0.0,<26"
+redis = "5.2.1"
+# QUEUE_TYPE=celery: the KB ingestion worker is a Celery worker (app/celery_app.py), run as its own
+# Deployment with several threads. The producer side (CeleryQueueService) needs it in the API image too.
+celery = {extras = ["redis"], version = "^5.5.0"}
+webdavclient3 = "^3.14.6"
+
+# Search runs in-process (app/services/vector/, app/services/embedding/): a
+# Mongo client for the vector store and numpy for the cosine-fallback/BM25 maths.
+motor = "^3.7.0"
+numpy = ">=1.26"
+
+langchain-openai = "^0.3.0"
+langchain-ollama = "^0.3.7"
+langchain-core = "^0.3.0"
+# LLM_TYPE=aws and LLM_TYPE=google. Plain dependencies rather than optional
+# extras: switching backend is meant to be a config change, and an extra the
+# image was not built with would turn that into a rebuild.
+langchain-aws = "^0.2.0"
+langchain-google-genai = "^2.0.0"
+
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.4.1"
+# tests/test_lifespan_llm.py drives the lifespan context manager, which is async.
+pytest-asyncio = "^0.24.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

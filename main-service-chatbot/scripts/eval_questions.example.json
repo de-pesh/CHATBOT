@@ -1,0 +1,4 @@
+[
+  {"question": "What is the encryption requirement for customer data?", "expect_sources": ["Information Security Policy"], "must_contain": ["encrypt"]},
+  {"question": "What is the airspeed velocity of an unladen swallow?", "expect_no_answer": true}
+]

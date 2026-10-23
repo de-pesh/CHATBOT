@@ -1,0 +1,77 @@
+# Apache Tika: reads the legacy Office formats (.doc, .ppt) for the parser.
+# About 190 MB, its own pod, so the parser image gains nothing. Internal only -
+# the server has no authentication, so no Route points at it (see
+# openshift/11-networkpolicy.yaml, which locks ingress to it down to
+# indexing-rpc-server only).
+#
+# Point the parser at it with CONVERTER_URL in 02-configmap.yaml. Leave the
+# variable out and .doc / .ppt are refused unless the parser image has LibreOffice.
+#
+# A restricted-network cluster almost never has a path to docker.io, so unlike
+# the other two images this one is NOT pulled at deploy time - mirror it to
+# Quay first, from a machine that *can* reach Docker Hub:
+#   docker pull docker.io/apache/tika:4.0.0
+#   docker tag docker.io/apache/tika:4.0.0 quay-quay-registry.apps.dda-desc-az1-01.desccii.local/dda-desc/tika:4.0.0
+#   docker push quay-quay-registry.apps.dda-desc-az1-01.desccii.local/dda-desc/tika:4.0.0
+# then set the image below and, if that Quay repo is private, keep the
+# imagePullSecrets block (same quay-pull-secret as the other deployments - see
+# docs/openshift-deploy.md step 4a).
+#
+# Not yet run on OpenShift: the image runs as a non-root user (35002) and
+# writes only under /tmp, which is what the restricted SCC needs - check it
+# starts under yours.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tika
+  labels:
+    app: tika
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tika
+  template:
+    metadata:
+      labels:
+        app: tika
+    spec:
+      # Remove if quay-quay-registry.apps.dda-desc-az1-01.desccii.local/dda-desc/tika is a public repository.
+      imagePullSecrets:
+        - name: quay-pull-secret
+      containers:
+        - name: tika
+          image: quay-quay-registry.apps.dda-desc-az1-01.desccii.local/dda-desc/tika:4.0.0
+          ports:
+            - containerPort: 9998
+          readinessProbe:
+            httpGet:
+              path: /version
+              port: 9998
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /version
+              port: 9998
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "512Mi"
+            limits:
+              memory: "1Gi"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tika
+spec:
+  selector:
+    app: tika
+  ports:
+    - port: 9998
+      targetPort: 9998

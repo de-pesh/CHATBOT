@@ -1,0 +1,75 @@
+version: 1
+disable_existing_loggers: False
+
+# --- Filters ---
+filters:
+  request_id_filter:
+    (): app.observability.RequestIDFilter
+
+# --- Formatters ---
+formatters:
+  default:
+    format: "%(asctime)s - %(name)s - %(levelname)s - %(request_id)s - %(message)s"
+    datefmt: "%Y-%m-%d %H:%M:%S" # Added consistent datefmt
+    defaults:
+      request_id: "N/A" # Default value if 'request_id' is not available
+
+  access_formatter: # Renamed for clarity, uvicorn.access logs are typically just the message
+    format: "%(message)s" # Standard for Uvicorn access logs
+    # datefmt is often part of the message itself from uvicorn
+
+  uvicorn_custom_formatter: # Keep your custom formatter name
+    (): app.observability.UvicornErrorLogFormatter
+    # format string defined within the class itself
+
+# --- Handlers ---
+handlers:
+  console_default_handler: # Renamed for clarity
+    formatter: default # Uses the updated default formatter
+    class: logging.StreamHandler
+    stream: ext://sys.stdout
+    filters: [request_id_filter] # Apply the request ID filter
+
+  uvicorn_error_console_handler: # Renamed for clarity
+    formatter: uvicorn_custom_formatter # Uses your custom uvicorn formatter
+    class: logging.StreamHandler
+    stream: ext://sys.stdout
+
+  access_console_handler: # Renamed for clarity
+    formatter: access_formatter # Uses the access formatter
+    class: logging.StreamHandler
+    stream: ext://sys.stdout
+
+# --- Loggers ---
+loggers:
+  # Root logger - catches anything not explicitly handled, good for development
+  # For production, you might want to be more specific.
+  "": # Root logger
+    handlers: [console_default_handler] # All unhandled logs go here
+    level: WARNING # Set to WARNING or INFO as needed for root
+    propagate: False # Usually false for root unless you have a parent root handler
+
+  uvicorn.error:
+    handlers: [uvicorn_error_console_handler]
+    level: INFO
+    propagate: False
+
+  uvicorn.access:
+    handlers: [access_console_handler]
+    level: INFO
+    propagate: False
+
+  app: # Your main application logger
+    handlers: [console_default_handler]
+    level: INFO # Or DEBUG as needed
+    propagate: False
+
+  azure:
+    handlers: [console_default_handler]
+    level: WARNING
+    propagate: False
+
+  pymongo.client:
+    handlers: [console_default_handler]
+    level: WARNING
+    propagate: False

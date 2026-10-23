@@ -1,0 +1,64 @@
+# The parsing-indexing-service pod: HTTP API server (ParseFile, Index, Delete,
+# Health on port 8001). The kb-worker runs as a SEPARATE pod (see
+# 05b-deployment-kb-worker.yaml) so it can be scaled and restarted independently.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: parsing-indexing-service
+  labels:
+    app: parsing-indexing-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: parsing-indexing-service
+  template:
+    metadata:
+      labels:
+        app: parsing-indexing-service
+    spec:
+      imagePullSecrets:
+        - name: quay-pull-secret
+      containers:
+        - name: parsing-indexing-service
+          image: quay-quay-registry.apps.dda-desc-az1-01.desccii.local/dda-desc/chatbot-parsing-indexing-service:<TAG>
+          ports:
+            - containerPort: 8001
+          envFrom:
+            - configMapRef:
+                name: indexing-rpc-server-config
+            - secretRef:
+                name: indexing-rpc-server-secrets
+          volumeMounts:
+            - name: file-store
+              mountPath: /data/files
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8001
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8001
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            failureThreshold: 3
+          # Sized for the image built with EMBEDDING_MODE=remote (embeddings come
+          # from LiteLLM, so no torch or model in memory) - a starting point,
+          # not a measurement: watch `oc adm top pod` under a real upload and
+          # adjust. An image built with the local embedding model needs about
+          # 2Gi requested / 4Gi limit instead.
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "2"
+              memory: "3Gi"
+      volumes:
+        - name: file-store
+          persistentVolumeClaim:
+            claimName: chatbot-file-store

@@ -7,6 +7,11 @@ import react from "@vitejs/plugin-react";
 import { federation } from "@module-federation/vite";
 
 export default defineConfig({
+  // The repo-root .env - the one config file - instead of a FE/.env of its own.
+  // Only VITE_* variables are put into the browser bundle; nothing else in that
+  // file (keys, connection strings) is ever exposed. A missing file is fine, as
+  // in the Docker build, where the value arrives as a build argument instead.
+  envDir: "..",
   base: "/chatbot/",
   plugins: [
     react(),

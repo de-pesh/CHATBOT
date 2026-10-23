@@ -1,0 +1,54 @@
+# Applies the database schema (main-service-chatbot/scripts/mssql/*.sql)
+# from inside the cluster, so no sqlcmd client or network path from a
+# workstation to the database is needed. It is the same script `python local.py db`
+# runs, using the same image, ConfigMap and Secret as main-service:
+#   DB_CONNECTION_STRING    <- main-service-secrets
+#
+# Optional: main-service applies the schema itself at startup (AUTO_APPLY_SCHEMA,
+# default on), so the schema is created on deploy without this Job. Use the Job
+# to apply it ahead of the first rollout, to check the database connection before
+# deploying, or when AUTO_APPLY_SCHEMA=false. Applying the scripts by hand
+# (docs/openshift-deploy.md step 1) is equivalent. Safe to re-run - applied
+# scripts are recorded in a schema_migrations table and skipped. Use it after the
+# image is pushed:
+#
+#   oc apply -f openshift/10-job-db-schema.yaml
+#   oc logs -f job/db-schema
+#   oc delete job db-schema          # before re-applying after a new image
+#
+# The database itself is created only if it does not exist; a pre-made one
+# needs no CREATE DATABASE right for the user in the connection string.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: db-schema
+  labels:
+    app: db-schema
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app: db-schema
+    spec:
+      restartPolicy: Never
+      # Remove if quay-quay-registry.apps.dda-desc-az1-01.desccii.local/dda-desc/chatbot-main-service is a public repository.
+      imagePullSecrets:
+        - name: quay-pull-secret
+      containers:
+        - name: apply-schema
+          image: quay-quay-registry.apps.dda-desc-az1-01.desccii.local/dda-desc/chatbot-main-service:<TAG>
+          command: ["python", "scripts/apply_schema.py"]
+          envFrom:
+            - configMapRef:
+                name: main-service-config
+            - secretRef:
+                name: main-service-secrets
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "250m"
+              memory: "256Mi"

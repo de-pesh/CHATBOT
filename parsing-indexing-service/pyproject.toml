@@ -1,0 +1,89 @@
+[tool.poetry]
+name = "parsing-indexing-services-chatbot"
+version = "0.1.0"
+description = ""
+authors = ["Prashant Singh <prashant.singh3@in.ey.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+fastapi = "^0.116.1"
+uvicorn = {extras = ["standard"], version = "^0.35.0"}
+azure-storage-blob = "^12.25.1"
+motor = "^3.7.0"
+pydantic-settings = "^2.8.1"
+aiohttp = "^3.11.16"
+# numpy was only here through torch; the remote embedding service and the Mongo
+# fallback search use it directly.
+numpy = ">=1.26"
+langchain-text-splitters = "^0.3.8"
+celery = "^5.4.0"
+redis = "^5.0.0"
+python-tds = "^1.17.1"
+
+# Document parsing (ParsingService.ParseFile).
+# PyMuPDF handles PDF text extraction. python-docx/python-pptx/openpyxl handle
+# Office formats natively. BeautifulSoup+lxml handle HTML. Pillow handles
+# image pre-processing before the vision LLM.
+pdfplumber = "^0.9"
+python-docx = "^1.1"
+python-pptx = "^1.0"
+openpyxl = "^3.1"
+beautifulsoup4 = "^4.12"
+lxml = "^5.0"
+pillow = "^11.2.1"
+# Outlook .msg files.
+extract-msg = ">=0.48.0"
+langchain-azure-ai = "^0.1.5"
+# Vision LLM for ParseFile's scanned-page/image OCR fallback. VISION_LLM_TYPE
+# (parsing/vision/vision_llm_factory.py) picks the backend: LiteLLM and Azure OpenAI
+# use langchain-openai, Ollama uses langchain-ollama, Azure AI Foundry uses
+# langchain-azure-ai above.
+langchain-openai = "^0.3.0"
+langchain-ollama = "^0.3.7"
+langchain-core = "^0.3.0"
+
+
+# Only for VECTOR_STORE=qdrant. The fastembed extra brings in ONNX Runtime
+# (~400 MB) for the local BM25 sparse encoder. Not installed in the default
+# image; add --with qdrant to the poetry install step in the Dockerfile when
+# deploying against a Qdrant pod.
+[tool.poetry.group.qdrant]
+optional = true
+
+[tool.poetry.group.qdrant.dependencies]
+qdrant-client = {extras = ["fastembed"], version = "^1.12"}
+
+
+# Only for EMBEDDING_TYPE=local. Skipped by an image built with
+# EMBEDDING_MODE=remote, which drops torch, transformers and the 600 MB model
+# (see the Dockerfile) - the embeddings then come from an endpoint.
+[tool.poetry.group.local-embeddings]
+optional = true
+
+[tool.poetry.group.local-embeddings.dependencies]
+sentence-transformers = "^4.0.2"
+# Pinned: 4.57 cannot load gte-multilingual-base ("Cannot copy out of meta
+# tensor") and every search then returns nothing. 4.51.1 is the version the
+# model was developed against.
+transformers = "4.51.1"
+# torch comes in transitively via sentence-transformers, and PyPI's default
+# linux wheel is the CUDA build: 3.2 GB of nvidia-* libs plus a 1.2 GB torch,
+# on a workload where torch.cuda.is_available() is False. Pinning it to the
+# CPU index keeps the image a fraction of the size.
+# CLOSED NETWORK: repoint this source at an internal mirror of
+# download.pytorch.org/whl/cpu, or the build cannot resolve torch.
+torch = {version = "^2.0", source = "pytorch-cpu"}
+
+[[tool.poetry.source]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+priority = "explicit"
+
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

@@ -1,0 +1,58 @@
+# The kb-worker pod: Celery ingest worker. Runs as its own Deployment (separate
+# from the parsing-indexing-service API pod in 05-deployment-parsing-indexing-service.yaml)
+# so it can be scaled, restarted, or temporarily stopped without taking down the
+# HTTP API. Uses the same image and config as parsing-indexing-service.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kb-worker
+  labels:
+    app: kb-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kb-worker
+  template:
+    metadata:
+      labels:
+        app: kb-worker
+    spec:
+      imagePullSecrets:
+        - name: quay-pull-secret
+      containers:
+        - name: kb-worker
+          image: quay-quay-registry.apps.dda-desc-az1-01.desccii.local/dda-desc/chatbot-parsing-indexing-service:<TAG>
+          command: ["celery", "-A", "app.celery_app", "worker"]
+          envFrom:
+            - configMapRef:
+                name: indexing-rpc-server-config
+            - secretRef:
+                name: indexing-rpc-server-secrets
+          volumeMounts:
+            - name: file-store
+              mountPath: /data/files
+          # No HTTP port - probe the worker directly.
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - celery -A app.celery_app inspect ping --timeout 15 -d "celery@$HOSTNAME"
+            initialDelaySeconds: 60
+            periodSeconds: 60
+            timeoutSeconds: 30
+            failureThreshold: 3
+          # The worker mostly waits on the embedding endpoint and Mongo; no
+          # torch/model in memory (EMBEDDING_MODE=remote build).
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+      volumes:
+        - name: file-store
+          persistentVolumeClaim:
+            claimName: chatbot-file-store

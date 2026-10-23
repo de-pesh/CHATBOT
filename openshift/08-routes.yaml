@@ -1,0 +1,36 @@
+# The browser calls main-service directly (chat streaming and file
+# upload/download are not proxied through the frontend), so it needs its own
+# public Route independent of the frontend's.
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: main-service
+  annotations:
+    # The router's default is 30s of idle time. Chat turns run several LLM
+    # calls back to back and uploads can be large, so raise it.
+    haproxy.router.openshift.io/timeout: 120s
+spec:
+  host: chatbot-api.apps.dda-desc-az1-01.desccii.local
+  to:
+    kind: Service
+    name: main-service
+  port:
+    targetPort: 8000
+
+---
+# Only needed if you are serving this repo's own standalone frontend build -
+# see the note at the top of openshift/06-deployment-frontend.yaml.
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: frontend
+spec:
+  host: chatbot.apps.dda-desc-az1-01.desccii.local
+  to:
+    kind: Service
+    name: frontend
+  port:
+    targetPort: 8080
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

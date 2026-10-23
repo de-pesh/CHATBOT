@@ -1,0 +1,1147 @@
+<title>AI Chat</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
+
+<style>
+/* ── tokens ── */
+:root {
+  --bg:         #eef3fb;
+  --surface:    #ffffff;
+  --surface2:   #f4f7fe;
+  --border:     #d6e3f3;
+  --accent:     #3a6ea8;
+  --accent2:    #2a5a98;
+  --accent-lt:  #e8f0fb;
+  --user-bg:    #4a5568;
+  --user-fg:    #ffffff;
+  --bot-fg:     #172554;
+  --fg:         #1e3654;
+  --muted:      #5b6b82;
+  --dim:        #9aabbd;
+  --danger:     #c0392b;
+  --warn:       #b45309;
+  --f:          'Inter', system-ui, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg:        #0d1929; --surface:  #162035; --surface2: #1b2a42;
+    --border:    #2a3e5c; --accent:   #5b8ec5; --accent2:  #4878ae;
+    --accent-lt: #152236; --user-bg:  #374357; --user-fg:  #e8edf5;
+    --bot-fg:    #c8d8f0; --fg:       #d8e8f8; --muted:    #7d96b4;
+    --dim:       #4d6580; --danger:   #f87171; --warn:     #fb923c;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg:        #0d1929; --surface:  #162035; --surface2: #1b2a42;
+  --border:    #2a3e5c; --accent:   #5b8ec5; --accent2:  #4878ae;
+  --accent-lt: #152236; --user-bg:  #374357; --user-fg:  #e8edf5;
+  --bot-fg:    #c8d8f0; --fg:       #d8e8f8; --muted:    #7d96b4;
+  --dim:       #4d6580; --danger:   #f87171; --warn:     #fb923c;
+  color-scheme: dark;
+}
+
+*,*::before,*::after{box-sizing:border-box;}
+html,body{height:100%;margin:0;}
+body{
+  font-family:var(--f);font-size:14px;line-height:1.5;
+  background:var(--bg);color:var(--fg);
+  display:flex;flex-direction:column;
+  padding-left:max(0px,env(safe-area-inset-left,0px));
+  padding-right:max(0px,env(safe-area-inset-right,0px));
+  padding-block:0;
+}
+
+/* ── shell ── */
+#app{
+  display:flex;flex-direction:column;height:100%;
+  max-width:860px;width:100%;margin:0 auto;
+  background:var(--surface);
+  border-left:1px solid var(--border);border-right:1px solid var(--border);
+  position:relative;overflow:hidden;
+}
+@media(max-width:520px){#app{border:none;}}
+
+/* ── header ── */
+#hdr{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:9px max(16px,env(safe-area-inset-right,0px)) 9px max(16px,env(safe-area-inset-left,0px));
+  background:var(--surface2);border-bottom:1px solid var(--border);flex-shrink:0;gap:8px;
+}
+.hdr-l{display:flex;gap:6px;align-items:center;}
+.hdr-r{display:flex;gap:1px;align-items:center;}
+
+.tab-btn{
+  font-family:var(--f);font-size:13px;font-weight:500;
+  padding:5px 14px;border-radius:6px;cursor:pointer;
+  border:1px solid var(--border);background:transparent;color:var(--fg);
+  transition:background .15s,color .15s;
+}
+.tab-btn.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+
+.icon-btn{
+  width:34px;height:34px;border:none;background:transparent;cursor:pointer;
+  color:var(--accent);border-radius:6px;display:flex;align-items:center;justify-content:center;
+  transition:background .15s;flex-shrink:0;
+}
+.icon-btn:hover{background:var(--accent-lt);}
+.icon-btn.dim{color:var(--dim);}
+.icon-btn.dim:hover{color:var(--accent);background:var(--accent-lt);}
+.icon-btn.on{color:var(--accent);}
+.icon-btn:disabled{opacity:.4;cursor:default;}
+.icon-btn:disabled:hover{background:transparent;}
+.icon-btn svg{pointer-events:none;}
+
+/* ── panels ── */
+#chat-panel{
+  flex:1;min-height:0;overflow-y:auto;
+  padding:16px max(16px,env(safe-area-inset-right,0px)) 4px max(16px,env(safe-area-inset-left,0px));
+}
+#history-panel{
+  flex:1;min-height:0;overflow-y:auto;display:none;
+  padding:14px max(16px,env(safe-area-inset-right,0px)) 4px max(16px,env(safe-area-inset-left,0px));
+}
+#history-panel.active{display:block;}
+
+/* ── messages ── */
+.msg-row{display:flex;margin-bottom:18px;}
+.msg-row.user{justify-content:flex-end;}
+.msg-row.bot{justify-content:flex-start;}
+.bubble-wrap{display:flex;align-items:flex-end;gap:6px;max-width:88%;}
+.msg-row.user .bubble-wrap{flex-direction:row-reverse;}
+.avatar{
+  width:32px;height:32px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;font-size:14px;
+}
+.msg-row.user .avatar{background:#23406a;color:#fff;border:1px solid #23406a;}
+.msg-row.bot  .avatar{background:var(--accent-lt);color:var(--accent);border:1px solid var(--border);}
+.bubble{
+  padding:10px 14px;font-size:.925rem;line-height:1.6;
+  word-break:break-word;white-space:pre-wrap;
+}
+.msg-row.user .bubble{
+  background:var(--user-bg);color:var(--user-fg);
+  border-radius:18px 18px 6px 18px;border:none;
+}
+.msg-row.bot .bubble{
+  background:var(--surface2);color:var(--bot-fg);
+  border:1px solid var(--border);border-radius:18px 18px 18px 6px;
+  white-space:normal;
+}
+/* markdown inside bot bubble */
+.bubble p{margin-bottom:.5em;}.bubble p:last-child{margin-bottom:0;}
+.bubble ul,.bubble ol{margin:.4em 0 .4em 1.4em;}.bubble li{margin-bottom:.2em;}
+.bubble code{font-size:.86em;background:rgba(0,0,0,.09);padding:.1em .35em;border-radius:3px;}
+.bubble pre{background:rgba(0,0,0,.1);padding:.7em 1em;border-radius:6px;overflow-x:auto;margin:.5em 0;}
+.bubble pre code{background:none;padding:0;}
+.bubble a{color:var(--accent);}
+.bubble h1,.bubble h2,.bubble h3{font-size:1em;font-weight:600;margin:.6em 0 .2em;}
+.bubble table{border-collapse:collapse;margin:.5em 0;font-size:.88em;}
+.bubble th,.bubble td{border:1px solid var(--border);padding:4px 8px;}
+.bubble th{background:var(--accent-lt);}
+.bubble strong{font-weight:600;}
+.bubble blockquote{border-left:3px solid var(--accent);margin:.5em 0;padding-left:.8em;color:var(--muted);}
+
+/* ── feedback ── */
+.fb-row{display:flex;align-items:center;gap:2px;margin-top:6px;}
+.fb-btn{
+  border:none;background:none;cursor:pointer;
+  color:var(--dim);padding:2px;border-radius:4px;
+  display:flex;align-items:center;transition:color .12s;
+}
+.fb-btn:hover{color:var(--accent);}
+.fb-btn.good{color:var(--accent);}
+.fb-btn.bad{color:var(--danger);}
+.grounding{color:var(--warn);font-size:.74rem;display:flex;align-items:center;gap:3px;margin-left:4px;}
+.comment-row{display:flex;gap:6px;align-items:center;margin-top:6px;}
+.comment-row input{
+  flex:1;padding:4px 8px;border:1px solid var(--border);border-radius:6px;
+  font-family:var(--f);font-size:.8rem;background:var(--surface);color:var(--fg);
+}
+.comment-row input:focus{outline:2px solid var(--accent);border-color:transparent;}
+.comment-row button{
+  border:none;background:none;cursor:pointer;color:var(--accent);
+  display:flex;align-items:center;padding:2px;border-radius:4px;
+}
+.comment-row button:hover{color:var(--accent2);}
+
+/* ── timing ── */
+.timing{font-size:.7rem;color:var(--muted);margin-top:8px;line-height:1.4;}
+
+/* ── status / typing ── */
+#status{
+  padding:0 max(16px,env(safe-area-inset-left,0px)) 8px;
+  font-size:.82rem;color:var(--muted);font-style:italic;flex-shrink:0;
+}
+.dots{display:inline-flex;gap:4px;align-items:center;vertical-align:middle;}
+.dots span{
+  width:5px;height:5px;background:var(--dim);border-radius:50%;
+  animation:bounce 1.2s infinite ease-in-out;
+}
+.dots span:nth-child(2){animation-delay:.2s;}
+.dots span:nth-child(3){animation-delay:.4s;}
+@keyframes bounce{0%,80%,100%{transform:translateY(0);}40%{transform:translateY(-5px);}}
+
+/* ── suggestions ── */
+#suggestions{
+  display:none;flex-wrap:wrap;gap:6px;
+  padding:4px max(16px,env(safe-area-inset-right,0px)) 6px max(16px,env(safe-area-inset-left,0px));
+  flex-shrink:0;
+}
+#suggestions.has-chips{display:flex;}
+.chip{
+  font-family:var(--f);font-size:.75rem;padding:5px 12px;
+  border-radius:20px;border:1px solid var(--border);
+  background:var(--accent-lt);color:var(--accent);
+  cursor:pointer;transition:background .15s;
+  text-align:left;line-height:1.35;
+}
+.chip:hover{background:var(--border);}
+
+/* ── input bar ── */
+#input-bar{
+  display:flex;align-items:flex-end;gap:8px;
+  padding:10px max(16px,env(safe-area-inset-right,0px)) 10px max(16px,env(safe-area-inset-left,0px));
+  border-top:1px solid var(--border);background:var(--surface2);flex-shrink:0;
+}
+#msg-input{
+  flex:1;min-height:38px;max-height:120px;
+  padding:8px 12px;border:1px solid var(--border);border-radius:8px;
+  font-family:var(--f);font-size:.9rem;resize:none;overflow-y:auto;
+  background:var(--surface);color:var(--fg);line-height:1.5;
+}
+#msg-input:focus{outline:2px solid var(--accent);border-color:transparent;}
+#send-btn{
+  width:38px;height:38px;background:var(--accent);color:#fff;
+  border:none;border-radius:8px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;
+  transition:background .15s;
+}
+#send-btn:hover{background:var(--accent2);}
+#send-btn:disabled{background:var(--dim);cursor:default;}
+
+/* ── history ── */
+.hist-search-wrap{position:relative;margin-bottom:12px;}
+.hist-search-wrap svg{position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--dim);pointer-events:none;}
+#hist-search{
+  width:100%;padding:7px 10px 7px 32px;
+  border:1px solid var(--border);border-radius:8px;
+  font-family:var(--f);font-size:.88rem;background:var(--surface);color:var(--fg);
+}
+#hist-search:focus{outline:2px solid var(--accent);}
+.hist-title{font-weight:600;font-size:.95rem;margin-bottom:8px;}
+.hist-item{
+  display:flex;align-items:flex-start;gap:8px;padding:8px;
+  border-radius:6px;cursor:pointer;transition:background .12s;
+}
+.hist-item:hover{background:var(--surface2);}
+.hist-item-text{min-width:0;}
+.hist-item-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.88rem;}
+.hist-item-date{font-size:.75rem;color:var(--muted);}
+
+/* ── auth gate ── */
+#auth-gate{
+  position:absolute;inset:0;background:var(--bg);
+  display:none;align-items:center;justify-content:center;z-index:100;
+}
+#auth-gate.on{display:flex;}
+.auth-card{
+  background:var(--surface);border:1px solid var(--border);border-radius:12px;
+  padding:32px 28px;width:100%;max-width:360px;
+  display:flex;flex-direction:column;gap:14px;
+  margin:0 16px;
+}
+.auth-card h2{font-size:1.1rem;font-weight:600;text-align:center;margin:0;}
+.auth-card p{font-size:.83rem;color:var(--muted);text-align:center;margin:0;}
+.auth-card input{
+  padding:9px 12px;border:1px solid var(--border);border-radius:7px;
+  font-family:var(--f);font-size:.9rem;background:var(--surface);color:var(--fg);
+}
+.auth-card input:focus{outline:2px solid var(--accent);border-color:transparent;}
+.auth-submit{
+  padding:9px;background:var(--accent);color:#fff;border:none;
+  border-radius:7px;font-family:var(--f);font-size:.9rem;font-weight:500;cursor:pointer;
+}
+.auth-submit:hover{background:var(--accent2);}
+.auth-submit:disabled{background:var(--dim);cursor:default;}
+.auth-err{color:var(--danger);font-size:.82rem;text-align:center;}
+
+/* ── export menu ── */
+#export-menu{
+  position:absolute;top:54px;right:max(16px,env(safe-area-inset-right,0px));
+  background:var(--surface);border:1px solid var(--border);border-radius:8px;
+  overflow:hidden;z-index:60;display:none;min-width:190px;
+  box-shadow:0 4px 16px rgba(0,0,0,.12);
+}
+#export-menu.on{display:block;}
+.exp-item{
+  display:flex;align-items:center;gap:10px;padding:11px 16px;
+  cursor:pointer;font-size:.875rem;transition:background .12s;
+}
+.exp-item:hover{background:var(--surface2);}
+.exp-item:not(:last-child){border-bottom:1px solid var(--border);}
+
+/* ── toast ── */
+#toast{
+  position:fixed;bottom:70px;left:50%;transform:translateX(-50%);
+  background:#1e293b;color:#fff;padding:7px 16px;border-radius:8px;
+  font-size:.82rem;pointer-events:none;opacity:0;transition:opacity .2s;
+  z-index:200;white-space:nowrap;
+}
+#toast.show{opacity:1;}
+
+/* scrollbar */
+::-webkit-scrollbar{width:6px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+</style>
+
+<!-- ═══ MARKUP ════════════════════════════════════════════════════════════════ -->
+
+<div id="app">
+
+  <!-- auth gate -->
+  <div id="auth-gate">
+    <div class="auth-card">
+      <h2>Sign in</h2>
+      <p>Enter your credentials to continue</p>
+      <input id="auth-email" type="email" placeholder="Email" autocomplete="email">
+      <input id="auth-password" type="password" placeholder="Password" autocomplete="current-password">
+      <button class="auth-submit" id="auth-btn">Sign in</button>
+      <div class="auth-err" id="auth-err" hidden></div>
+    </div>
+  </div>
+
+  <!-- export dropdown -->
+  <div id="export-menu">
+    <div class="exp-item" id="exp-clipboard">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+      Copy to clipboard
+    </div>
+    <div class="exp-item" id="exp-download">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Download as text
+    </div>
+  </div>
+
+  <!-- header -->
+  <div id="hdr">
+    <div class="hdr-l">
+      <button class="tab-btn active" id="tab-chat-btn">AI Chat</button>
+    </div>
+    <div class="hdr-r">
+      <!-- timer -->
+      <button class="icon-btn dim" id="btn-timer" title="Show answer times">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2"/><path d="M5 3 3 5"/><path d="M19 3l2 2"/></svg>
+      </button>
+      <!-- export -->
+      <button class="icon-btn" id="btn-export" title="Export chat" disabled>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      </button>
+      <!-- new chat -->
+      <button class="icon-btn" id="btn-new" title="New chat">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><line x1="12" y1="8" x2="12" y2="14"/><line x1="9" y1="11" x2="15" y2="11"/></svg>
+      </button>
+      <!-- history -->
+      <button class="icon-btn" id="btn-history" title="History">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><polyline points="12 7 12 12 15 15"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- chat panel -->
+  <div id="chat-panel"></div>
+
+  <!-- history panel -->
+  <div id="history-panel">
+    <div class="hist-search-wrap">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      <input id="hist-search" type="text" placeholder="Search history…">
+    </div>
+    <div class="hist-title">History</div>
+    <div id="hist-list"></div>
+  </div>
+
+  <!-- typing / stage status -->
+  <div id="status" hidden></div>
+
+  <!-- suggested follow-ups -->
+  <div id="suggestions"></div>
+
+  <!-- input -->
+  <div id="input-bar">
+    <textarea id="msg-input" placeholder="Type your message…" rows="1" dir="auto"></textarea>
+    <button id="send-btn">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M2 21 23 12 2 3v7l15 2-15 2z"/></svg>
+    </button>
+  </div>
+
+</div>
+
+<div id="toast"></div>
+
+<!-- ═══ SCRIPT ════════════════════════════════════════════════════════════════ -->
+<script>
+// ── CONFIG ── change BASE_URL to your API's origin if it differs from this page ──
+const BASE_URL = "";  // e.g. "http://chatbot-api.apps.dda-desc-az1-01.desccii.local"
+const ROUTES = {
+  chat:     `${BASE_URL}/chat`,
+  stream:   `${BASE_URL}/chat/stream`,
+  me:       `${BASE_URL}/chat/me`,
+  auth:     `${BASE_URL}/auth/authenticate`,
+  history:  `${BASE_URL}/chat/history`,
+  sessions: `${BASE_URL}/chat/session`,
+  feedback: (id) => `${BASE_URL}/chat/history/${id}/feedback`,
+};
+// ─────────────────────────────────────────────────────────────────────────────
+
+const MAX_HISTORY = 10;
+const GROUNDING_DELAY_MS = 6000;
+
+// ── state ──────────────────────────────────────────────────────────────────
+let messages       = [];        // { sender, text, timing?, historyId? }
+let conversationId = null;
+let isStreaming    = false;
+let showTimings    = loadPref("showTimings", false);
+let token          = loadPref("authToken", null);
+let userName       = loadPref("user", null);
+let activeTab      = "chat";
+let feedbackState  = {};        // historyId -> { rating, comment }
+let groundingState = {};        // historyId -> { verdict, detail }
+let commentBoxFor  = null;
+let histSessions   = [];
+let suggestions    = [];
+
+// ── elements ───────────────────────────────────────────────────────────────
+const $chat      = document.getElementById("chat-panel");
+const $hist      = document.getElementById("history-panel");
+const $status    = document.getElementById("status");
+const $sugg      = document.getElementById("suggestions");
+const $input     = document.getElementById("msg-input");
+const $sendBtn   = document.getElementById("send-btn");
+const $authGate  = document.getElementById("auth-gate");
+const $authEmail = document.getElementById("auth-email");
+const $authPass  = document.getElementById("auth-password");
+const $authBtn   = document.getElementById("auth-btn");
+const $authErr   = document.getElementById("auth-err");
+const $toast     = document.getElementById("toast");
+const $exportMenu= document.getElementById("export-menu");
+
+// ── helpers ────────────────────────────────────────────────────────────────
+function loadPref(k, def) {
+  try { const v = localStorage.getItem("chatbot." + k); return v === null ? def : JSON.parse(v); }
+  catch { return def; }
+}
+function savePref(k, v) {
+  try { localStorage.setItem("chatbot." + k, JSON.stringify(v)); } catch {}
+}
+
+function authHeaders() {
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+let toastTimer;
+function showToast(msg) {
+  $toast.textContent = msg;
+  $toast.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => $toast.classList.remove("show"), 2400);
+}
+
+function marked_html(text) {
+  try { return marked.parse(text, { breaks: true, gfm: true }); }
+  catch { return text.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+}
+
+function seconds(ms) { return (ms / 1000).toFixed(1) + "s"; }
+function describeTiming({ totalMs, firstWordMs, server }) {
+  const parts = [`Answered in ${seconds(totalMs)}`];
+  if (firstWordMs != null) parts.push(`first words after ${seconds(firstWordMs)}`);
+  if (server) {
+    const stages = [
+      ["understanding", server.rephrase_ms],
+      ["search",        server.retrieve_ms],
+      ["reranking",     server.rerank_ms],
+      ["writing",       server.generate_ms],
+      ["translation",   server.translate_ms],
+      ["links",         server.linkify_ms],
+    ].filter(([, ms]) => ms != null && ms >= 50)
+     .map(([l, ms]) => `${l} ${seconds(ms)}`);
+    if (stages.length) parts.push(stages.join(", "));
+    if (server.total_ms != null)
+      parts.push(`network ${seconds(Math.max(0, totalMs - server.total_ms))}`);
+  }
+  return parts.join(" · ");
+}
+
+function stageText(stage) {
+  const map = {
+    rephrasing: "Understanding the question…",
+    retrieving: "Searching…",
+    reranking:  "Ranking results…",
+    generating: "Writing the answer…",
+    finalising: "Finishing up…",
+  };
+  return map[stage] || "Thinking…";
+}
+
+// ── render ─────────────────────────────────────────────────────────────────
+function renderAll() {
+  $chat.innerHTML = "";
+  for (let i = 0; i < messages.length; i++) renderMessage(i);
+}
+
+function renderMessage(idx) {
+  const msg = messages[idx];
+  const existing = $chat.querySelector(`[data-idx="${idx}"]`);
+  if (existing) { updateBubble(existing, msg); return; }
+
+  const row = document.createElement("div");
+  row.className = `msg-row ${msg.sender === "user" ? "user" : "bot"}`;
+  row.dataset.idx = idx;
+
+  const wrap = document.createElement("div");
+  wrap.className = "bubble-wrap";
+
+  const avatar = document.createElement("div");
+  avatar.className = "avatar";
+  avatar.innerHTML = msg.sender === "user"
+    ? `<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`
+    : `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/><circle cx="12" cy="16" r="1" fill="currentColor"/></svg>`;
+
+  const bubble = document.createElement("div");
+  bubble.className = "bubble";
+  bubble.dataset.bubbleIdx = idx;
+  updateBubble(bubble, msg);
+
+  wrap.append(avatar, bubble);
+  row.append(wrap);
+  $chat.append(row);
+}
+
+function updateBubble(el, msg) {
+  const bubble = el.classList.contains("bubble") ? el : el.querySelector(".bubble");
+  if (!bubble) return;
+
+  const idx = parseInt(bubble.dataset.bubbleIdx ?? el.dataset.idx ?? "-1");
+
+  if (msg.sender === "bot" || msg.sender === "assistant") {
+    bubble.innerHTML = marked_html(msg.text || "");
+    const fbRow = renderFeedback(msg, idx);
+    if (fbRow) bubble.append(fbRow);
+    if (showTimings && msg.timing) {
+      const t = document.createElement("div");
+      t.className = "timing";
+      t.textContent = describeTiming(msg.timing);
+      bubble.append(t);
+    }
+  } else {
+    bubble.textContent = msg.text;
+  }
+}
+
+function renderFeedback(msg, idx) {
+  if (!msg.historyId) return null;
+  const id = msg.historyId;
+  const fb = feedbackState[id];
+  const gr = groundingState[id];
+
+  const row = document.createElement("div");
+  row.className = "fb-row";
+  row.dataset.fbId = id;
+
+  // thumbs up
+  const up = document.createElement("button");
+  up.className = "fb-btn" + (fb?.rating === "positive" ? " good" : "");
+  up.title = "Good response";
+  up.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="${fb?.rating==="positive"?"currentColor":"none"}" stroke="currentColor" stroke-width="2"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3H14z"/><path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>`;
+  up.addEventListener("click", () => submitFeedback(id, "positive"));
+
+  // thumbs down
+  const dn = document.createElement("button");
+  dn.className = "fb-btn" + (fb?.rating === "negative" ? " bad" : "");
+  dn.title = "Bad response";
+  dn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="${fb?.rating==="negative"?"currentColor":"none"}" stroke="currentColor" stroke-width="2"><path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3H10z"/><path d="M17 2h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/></svg>`;
+  dn.addEventListener("click", () => {
+    void submitFeedback(id, "negative");
+    commentBoxFor = id;
+    refreshMessages();
+  });
+
+  row.append(up, dn);
+
+  if (gr) {
+    const warn = document.createElement("span");
+    warn.className = "grounding";
+    warn.title = gr.detail || "AI can make mistakes";
+    warn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> Verify`;
+    row.append(warn);
+  }
+
+  // comment box
+  if (commentBoxFor === id) {
+    const cRow = document.createElement("div");
+    cRow.className = "comment-row";
+    const inp = document.createElement("input");
+    inp.type = "text";
+    inp.placeholder = "What went wrong? (optional)";
+    inp.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); submitComment(id, inp.value); } });
+    const okBtn = document.createElement("button");
+    okBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M2 21 23 12 2 3v7l15 2-15 2z"/></svg>`;
+    okBtn.addEventListener("click", () => submitComment(id, inp.value));
+    const xBtn = document.createElement("button");
+    xBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
+    xBtn.addEventListener("click", () => { commentBoxFor = null; refreshMessages(); });
+    cRow.append(inp, okBtn, xBtn);
+    row.after(cRow); // will be appended to bubble below
+    // Actually return them as a fragment
+    const frag = document.createDocumentFragment();
+    frag.append(row, cRow);
+    return frag;
+  }
+
+  return row;
+}
+
+function refreshMessages() {
+  // Re-render bot bubbles that have feedback (keep user bubbles intact)
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+    if ((msg.sender === "bot" || msg.sender === "assistant") && msg.historyId) {
+      const row = $chat.querySelector(`[data-idx="${i}"]`);
+      if (row) {
+        const bubble = row.querySelector(".bubble");
+        if (bubble) updateBubble(bubble, msg);
+      }
+    }
+  }
+}
+
+let stickToBottom = true;
+$chat.addEventListener("scroll", () => {
+  stickToBottom = $chat.scrollHeight - $chat.scrollTop - $chat.clientHeight < 80;
+});
+function scrollIfStuck() {
+  if (stickToBottom) $chat.scrollTop = $chat.scrollHeight;
+}
+
+// ── auth ────────────────────────────────────────────────────────────────────
+function showAuthGate(visible) {
+  $authGate.classList.toggle("on", visible);
+}
+function setAuthError(msg) {
+  $authErr.textContent = msg;
+  $authErr.hidden = !msg;
+}
+
+$authBtn.addEventListener("click", doLogin);
+[$authEmail, $authPass].forEach(el => el.addEventListener("keydown", e => { if (e.key === "Enter") doLogin(); }));
+
+async function doLogin() {
+  const email = $authEmail.value.trim();
+  const pass  = $authPass.value;
+  if (!email || !pass) { setAuthError("Enter email and password."); return; }
+  $authBtn.disabled = true;
+  setAuthError("");
+  try {
+    const res = await fetch(ROUTES.auth, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: email, password: pass }),
+    });
+    if (!res.ok) { setAuthError(res.status === 401 ? "Incorrect credentials." : "Login failed."); return; }
+    const data = await res.json();
+    token = data.access_token || data.token || null;
+    if (!token) { setAuthError("Login failed — no token returned."); return; }
+    savePref("authToken", token);
+    if (data.user || email) { userName = data.user || email; savePref("user", userName); }
+    showAuthGate(false);
+  } catch {
+    setAuthError("Could not reach the server.");
+  } finally {
+    $authBtn.disabled = false;
+  }
+}
+
+function handleUnauthorized() {
+  token = null; savePref("authToken", null);
+  showAuthGate(true);
+}
+
+// Check auth on load (GET /chat/me → 401 means login required, 503 = auth disabled)
+(async () => {
+  if (!ROUTES.me) return;
+  try {
+    const res = await fetch(ROUTES.me, { headers: authHeaders() });
+    if (res.status === 401) showAuthGate(true);
+    if (res.status === 200) {
+      try {
+        const d = await res.json();
+        if (d.username || d.email) { userName = d.username || d.email; savePref("user", userName); }
+      } catch {}
+    }
+  } catch {}
+})();
+
+// ── streaming ──────────────────────────────────────────────────────────────
+async function streamChat(url, payload, handlers) {
+  let res;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "text/event-stream", ...authHeaders() },
+      body: JSON.stringify(payload),
+    });
+  } catch { return false; }
+
+  if (res.status === 401) { handlers.onUnauthorized?.(); return true; }
+  if (!res.ok || !res.body) return false;
+
+  const reader = res.body.getReader();
+  const dec = new TextDecoder();
+  let buf = "";
+
+  const dispatch = (frame) => {
+    let event = "message";
+    const dataLines = [];
+    for (const line of frame.split("\n")) {
+      if (line.startsWith("event:")) event = line.slice(6).trim();
+      else if (line.startsWith("data:")) dataLines.push(line.slice(5).trim());
+    }
+    if (!dataLines.length) return;
+    let data;
+    try { data = JSON.parse(dataLines.join("\n")); } catch { return; }
+    switch (event) {
+      case "meta":  handlers.onMeta?.(data); break;
+      case "stage": handlers.onStage?.(data.stage); break;
+      case "delta": handlers.onDelta?.(data.text ?? ""); break;
+      case "done":  handlers.onDone?.(data); break;
+      case "error": handlers.onError?.(data.detail, "failed"); break;
+    }
+  };
+
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let b = buf.indexOf("\n\n");
+      while (b !== -1) { dispatch(buf.slice(0, b)); buf = buf.slice(b + 2); b = buf.indexOf("\n\n"); }
+    }
+    if (buf.trim()) dispatch(buf);
+  } catch (err) {
+    if (err?.name !== "AbortError") handlers.onError?.(undefined, "interrupted");
+  } finally { reader.releaseLock(); }
+  return true;
+}
+
+// ── send ────────────────────────────────────────────────────────────────────
+async function handleSend(overrideText) {
+  const text = (typeof overrideText === "string" ? overrideText : $input.value).trim();
+  if (!text || isStreaming) return;
+  stickToBottom = true;
+
+  const startedAt = performance.now();
+  let firstWordAt;
+
+  const history = messages.slice(-MAX_HISTORY).map(m => ({
+    role: m.sender === "user" ? "user" : "assistant",
+    content: m.text,
+  }));
+
+  messages.push({ sender: "user", text });
+  $input.value = "";
+  autoResizeInput();
+  setSuggestions([]);
+  isStreaming = true;
+  updateSendBtn();
+  document.getElementById("btn-export").disabled = false;
+
+  // Render user message
+  renderMessage(messages.length - 1);
+  scrollIfStuck();
+
+  const payload = {
+    conversation_id: conversationId,
+    user_id: userName,
+    local_hour: new Date().getHours(),
+    chat: [...history, { role: "user", content: text }],
+  };
+
+  let accumulated = "";
+  let hasBubble = false;
+  let botIdx = -1;
+
+  function writeBotMsg(newText, timing, historyId) {
+    if (!hasBubble) {
+      messages.push({ sender: "bot", text: newText, timing, historyId });
+      botIdx = messages.length - 1;
+      hasBubble = true;
+      renderMessage(botIdx);
+    } else {
+      messages[botIdx] = { ...messages[botIdx], text: newText, ...(timing ? { timing } : {}), ...(historyId ? { historyId } : {}) };
+      const row = $chat.querySelector(`[data-idx="${botIdx}"]`);
+      if (row) updateBubble(row, messages[botIdx]);
+    }
+    scrollIfStuck();
+  }
+
+  function finishTiming(server) {
+    return {
+      totalMs: Math.round(performance.now() - startedAt),
+      firstWordMs: firstWordAt != null ? Math.round(firstWordAt - startedAt) : undefined,
+      server,
+    };
+  }
+
+  setStatus(null, true); // typing dots
+
+  try {
+    const streamed = await streamChat(ROUTES.stream, payload, {
+      onMeta:  (m)   => { if (m?.conversation_id) conversationId = m.conversation_id; },
+      onStage: (s)   => setStatus(stageText(s)),
+      onDelta: (t)   => {
+        if (firstWordAt == null) firstWordAt = performance.now();
+        accumulated += t;
+        writeBotMsg(accumulated);
+      },
+      onDone: (d) => {
+        if (d?.conversation_id) conversationId = d.conversation_id;
+        writeBotMsg(
+          d?.response || accumulated || "No response.",
+          finishTiming(d?.timings),
+          d?.history_id,
+        );
+        if (d?.history_id) pollGrounding(d.history_id);
+        if (d?.suggested_questions?.length) setSuggestions(d.suggested_questions);
+      },
+      onError: (detail, reason) => {
+        if (detail) console.error("Stream error:", detail);
+        const notice = reason === "interrupted"
+          ? "Connection interrupted."
+          : "Could not get an answer. Please try again.";
+        writeBotMsg(accumulated ? `${accumulated}\n\n${notice}` : notice);
+      },
+      onUnauthorized: handleUnauthorized,
+    });
+
+    if (!streamed) {
+      // Fallback to blocking /chat
+      setStatus("Waiting for response…");
+      const res = await fetch(ROUTES.chat, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify(payload),
+      });
+      if (res.status === 401) { handleUnauthorized(); return; }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (data?.conversation_id) conversationId = data.conversation_id;
+      writeBotMsg(data?.response || "No response.", finishTiming(data?.timings), data?.history_id);
+      if (data?.history_id) pollGrounding(data.history_id);
+      if (data?.suggested_questions?.length) setSuggestions(data.suggested_questions);
+    }
+  } catch (err) {
+    if (err?.status === 401 || err?.response?.status === 401) {
+      handleUnauthorized();
+    } else {
+      console.error("Send error:", err);
+      writeBotMsg("Something went wrong. Please try again.");
+    }
+  } finally {
+    isStreaming = false;
+    setStatus(null);
+    updateSendBtn();
+  }
+}
+
+// ── grounding poll ──────────────────────────────────────────────────────────
+function pollGrounding(historyId) {
+  setTimeout(async () => {
+    try {
+      const res = await fetch(`${ROUTES.history}?id=${historyId}&page_size=1`, { headers: authHeaders() });
+      if (!res.ok) return;
+      const data = await res.json();
+      const row = data?.[0];
+      if (row?.grounding_verdict && row.grounding_verdict !== "grounded") {
+        groundingState[historyId] = { verdict: row.grounding_verdict, detail: row.grounding_detail };
+        refreshMessages();
+      }
+    } catch {}
+  }, GROUNDING_DELAY_MS);
+}
+
+// ── feedback ────────────────────────────────────────────────────────────────
+async function submitFeedback(historyId, rating, comment) {
+  const body = comment ? { rating, comment } : { rating };
+  try {
+    const res = await fetch(ROUTES.feedback(historyId), {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...authHeaders() },
+      body: JSON.stringify(body),
+    });
+    if (res.status === 401) { handleUnauthorized(); return; }
+    feedbackState[historyId] = { rating, comment };
+    refreshMessages();
+  } catch { showToast("Could not record feedback."); }
+}
+
+function submitComment(historyId, text) {
+  commentBoxFor = null;
+  const comment = text.trim();
+  if (comment) void submitFeedback(historyId, "negative", comment);
+  refreshMessages();
+}
+
+// ── history ─────────────────────────────────────────────────────────────────
+function switchTab(tab) {
+  activeTab = tab;
+  const isChat = tab === "chat";
+  document.getElementById("chat-panel").style.display    = isChat ? "" : "none";
+  document.getElementById("history-panel").classList.toggle("active", !isChat);
+  document.getElementById("status").hidden               = !isChat;
+  document.getElementById("suggestions").className       = isChat && suggestions.length ? "has-chips" : "";
+  document.getElementById("input-bar").style.display     = isChat ? "" : "none";
+  document.getElementById("tab-chat-btn").classList.toggle("active", isChat);
+}
+
+async function openHistory() {
+  switchTab("history");
+  try {
+    const res = await fetch(`${ROUTES.sessions}?page_size=100&is_active=true`, { headers: authHeaders() });
+    if (res.status === 401) { handleUnauthorized(); return; }
+    if (!res.ok) return;
+    histSessions = (await res.json())?.data ?? await res.json().catch(() => []);
+    renderHistoryList(histSessions);
+  } catch (err) { console.error("History fetch:", err); }
+}
+
+// The sessions endpoint may return {data:[...]} or just [...]. Handle both.
+async function fetchSessions() {
+  const res = await fetch(`${ROUTES.sessions}?page_size=100&is_active=true`, { headers: authHeaders() });
+  if (res.status === 401) { handleUnauthorized(); throw new Error("401"); }
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const json = await res.json();
+  return Array.isArray(json) ? json : (json.data ?? []);
+}
+
+document.getElementById("btn-history").addEventListener("click", async () => {
+  switchTab("history");
+  try {
+    histSessions = await fetchSessions();
+    renderHistoryList(histSessions);
+  } catch {}
+});
+
+function renderHistoryList(sessions) {
+  const q = document.getElementById("hist-search").value.toLowerCase();
+  const filtered = sessions.filter(s =>
+    !q || Object.values(s).join(" ").toLowerCase().includes(q)
+  );
+  const list = document.getElementById("hist-list");
+  list.innerHTML = "";
+  filtered.forEach(s => {
+    const item = document.createElement("div");
+    item.className = "hist-item";
+    item.innerHTML = `
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;margin-top:2px;color:var(--dim)"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      <div class="hist-item-text">
+        <div class="hist-item-name">${escHtml(s.name || s.title || `Conversation ${s.id}`)}</div>
+        ${s.created_on ? `<div class="hist-item-date">${new Date(s.created_on).toLocaleString()}</div>` : ""}
+      </div>`;
+    item.addEventListener("click", () => loadSession(s.id));
+    list.append(item);
+  });
+}
+
+document.getElementById("hist-search").addEventListener("input", () => {
+  renderHistoryList(histSessions);
+});
+
+async function loadSession(id) {
+  conversationId = id;
+  switchTab("chat");
+  messages = [];
+  feedbackState = {};
+  groundingState = {};
+  $chat.innerHTML = "";
+  stickToBottom = true;
+
+  try {
+    const turns = await fetchAllTurns(id);
+    const rebuilt = turns.flatMap(turn => {
+      const user  = { sender: "user", text: turn.prompt || "" };
+      const reply = turn.response || (turn.error ? "Could not get an answer." : null);
+      if (!reply) return [user];
+      return [user, { sender: "bot", text: reply, historyId: turn.id }];
+    });
+    messages = rebuilt;
+
+    // grounding
+    for (const turn of turns) {
+      if (turn?.id && turn?.grounding_verdict && turn.grounding_verdict !== "grounded") {
+        groundingState[turn.id] = { verdict: turn.grounding_verdict, detail: turn.grounding_detail };
+      }
+    }
+
+    renderAll();
+    scrollIfStuck();
+    document.getElementById("btn-export").disabled = messages.length === 0;
+  } catch (err) {
+    if (!String(err).includes("401")) showToast("Could not load this chat.");
+  }
+}
+
+async function fetchAllTurns(convId) {
+  const PAGE = 100;
+  const turns = [];
+  let page = 1;
+  for (;;) {
+    const res = await fetch(
+      `${ROUTES.history}?conversation_id=${convId}&page_number=${page}&page_size=${PAGE}`,
+      { headers: authHeaders() },
+    );
+    if (res.status === 401) { handleUnauthorized(); throw new Error("401"); }
+    if (!res.ok) break;
+    const json = await res.json();
+    const batch = Array.isArray(json) ? json : (json.data ?? []);
+    turns.push(...batch);
+    const total = json.total_records ?? turns.length;
+    if (turns.length >= total || !batch.length) break;
+    page++;
+  }
+  return turns.reverse();
+}
+
+// ── suggestions ─────────────────────────────────────────────────────────────
+function setSuggestions(qs) {
+  suggestions = qs || [];
+  $sugg.innerHTML = "";
+  $sugg.className = suggestions.length && activeTab === "chat" ? "has-chips" : "";
+  suggestions.forEach(q => {
+    const chip = document.createElement("button");
+    chip.className = "chip";
+    chip.textContent = q;
+    chip.addEventListener("click", () => handleSend(q));
+    $sugg.append(chip);
+  });
+}
+
+// ── status line ─────────────────────────────────────────────────────────────
+function setStatus(text, dots = false) {
+  if (!text && !dots) { $status.hidden = true; return; }
+  $status.hidden = false;
+  if (dots && !text) {
+    $status.innerHTML = `<span class="dots"><span></span><span></span><span></span></span>`;
+  } else {
+    $status.textContent = text || "";
+  }
+}
+
+// ── export ──────────────────────────────────────────────────────────────────
+function buildExportText() {
+  return messages.map(m =>
+    `[${m.sender === "user" ? "You" : "Assistant"}]\n${m.text}`
+  ).join("\n\n");
+}
+
+document.getElementById("btn-export").addEventListener("click", e => {
+  e.stopPropagation();
+  $exportMenu.classList.toggle("on");
+});
+
+document.getElementById("exp-clipboard").addEventListener("click", () => {
+  $exportMenu.classList.remove("on");
+  const text = buildExportText();
+  navigator.clipboard?.writeText(text).then(() => showToast("Copied to clipboard.")).catch(() => {
+    // fallback: select a textarea
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.cssText = "position:fixed;top:-9999px;";
+    document.body.append(ta);
+    ta.select();
+    try { document.execCommand("copy"); showToast("Copied."); } catch { showToast("Copy failed — select manually."); }
+    ta.remove();
+  });
+});
+
+document.getElementById("exp-download").addEventListener("click", () => {
+  $exportMenu.classList.remove("on");
+  const text = buildExportText();
+  const blob = new Blob([text], { type: "text/plain" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `chat-${new Date().toISOString().slice(0,10)}.txt`;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+});
+
+document.addEventListener("click", e => {
+  if (!$exportMenu.contains(e.target) && e.target !== document.getElementById("btn-export"))
+    $exportMenu.classList.remove("on");
+});
+
+// ── timer toggle ─────────────────────────────────────────────────────────────
+function applyTimerToggle() {
+  const btn = document.getElementById("btn-timer");
+  btn.classList.toggle("on", showTimings);
+  btn.classList.toggle("dim", !showTimings);
+  btn.title = showTimings ? "Hide answer times" : "Show answer times";
+}
+document.getElementById("btn-timer").addEventListener("click", () => {
+  showTimings = !showTimings;
+  savePref("showTimings", showTimings);
+  applyTimerToggle();
+  renderAll();
+});
+applyTimerToggle();
+
+// ── new chat ──────────────────────────────────────────────────────────────
+document.getElementById("btn-new").addEventListener("click", () => {
+  messages = [];
+  conversationId = null;
+  feedbackState = {};
+  groundingState = {};
+  setSuggestions([]);
+  $chat.innerHTML = "";
+  switchTab("chat");
+  document.getElementById("btn-export").disabled = true;
+});
+
+// ── tab button ────────────────────────────────────────────────────────────
+document.getElementById("tab-chat-btn").addEventListener("click", () => switchTab("chat"));
+
+// ── input ──────────────────────────────────────────────────────────────────
+function autoResizeInput() {
+  $input.style.height = "auto";
+  $input.style.height = Math.min($input.scrollHeight, 120) + "px";
+}
+$input.addEventListener("input", autoResizeInput);
+$input.addEventListener("keydown", e => {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    handleSend();
+  }
+});
+document.getElementById("send-btn").addEventListener("click", () => handleSend());
+
+function updateSendBtn() {
+  $sendBtn.disabled = isStreaming;
+}
+
+// ── utilities ─────────────────────────────────────────────────────────────
+function escHtml(s) {
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+// Configure marked for safety
+if (typeof marked !== "undefined") {
+  marked.setOptions({ breaks: true, gfm: true });
+}
+</script>

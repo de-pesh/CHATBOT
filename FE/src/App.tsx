@@ -1,10 +1,9 @@
 import { CssBaseline } from "@mui/material";
-import "./App.css";
 import { useState } from "react";
 import Chatbot from "./components/Chatbot";
 import { Box } from "./remote-ui-stubs";
 
-function App({ API_ROUTES }: { API_ROUTES?: any }) {
+function App({ API_ROUTES, authToken }: { API_ROUTES?: any; authToken?: string }) {
   const [messages, setMessages] = useState<
     { sender: "user" | "assistant"; text: string }[]
   >([]);
@@ -27,6 +26,7 @@ function App({ API_ROUTES }: { API_ROUTES?: any }) {
           setMessages={setMessages}
           hideCloseButton
           API_ROUTES={API_ROUTES}
+          authToken={authToken}
         />
       </Box>
     </>

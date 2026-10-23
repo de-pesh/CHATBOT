@@ -1,0 +1,23 @@
+# Shared file store for STORAGE_TYPE=local. Must be ReadWriteMany: main-service
+# and indexing-rpc-server both mount it, and only paths cross the REST
+# boundary between them - main-service writes the upload, the compute service
+# reads it back, parses it, writes the extracted text, and main-service
+# indexes that path. An RWO volume binds to one node and the second pod
+# either fails to mount or silently sees a different (empty) volume.
+#
+# Ask your cluster admin which StorageClass supports RWX (commonly a CephFS
+# or NFS-backed one - "ocs-storagecluster-cephfs" on OpenShift Data
+# Foundation) and set storageClassName below. Omitting it uses the cluster
+# default, which is often RWO-only and will make this PVC (and the pods
+# mounting it) hang in Pending.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: chatbot-file-store
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 20Gi
+  storageClassName: nfs-csi-ocp

@@ -1,0 +1,51 @@
+# Only needed if this repo's own standalone FE build is what you are serving
+# (e.g. for a quick smoke test of the widget in isolation). The normal
+# production path is Module Federation: an external host app imports
+# ./Chatbot or ./FloatingChatbot from this image's remoteEntry.js at runtime
+# and supplies its own API_ROUTES - that host app's own deployment is outside
+# this repo. Skip this Deployment/Service/Route entirely if you only need the
+# remote, and just make sure the host app can reach this image's remoteEntry.js
+# (e.g. by still building and pushing it, and pointing the host app's
+# federation config at this Service/Route).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  labels:
+    app: frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      imagePullSecrets:
+        - name: quay-pull-secret
+      containers:
+        - name: frontend
+          image: quay-quay-registry.apps.dda-desc-az1-01.desccii.local/dda-desc/chatbot-frontend:<TAG>
+          ports:
+            - containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "250m"
+              memory: "128Mi"

@@ -1,95 +1,58 @@
-# Full local CCPM stack - every service runs as a container.
+# Full local chatbot stack - every service runs as a container.
 #
-#   docker compose build          # first time (long: the two rpc servers pull
-#                                 # torch and a ~600 MB HF model each)
+#   docker compose build          # first time
 #   docker compose up -d
 #   docker compose ps
 #   docker compose logs -f main-service
+#   docker compose logs -f parsing-indexing-service
 #   docker compose down           # add -v to wipe the databases too
 #
 # The UI is on http://localhost:3006 (nginx redirects to /chatbot/).
-# The browser talks to main-service directly on :8000 (FE/src/main.tsx
-# hardcodes that URL), so that port stays published.
-#
-# Ports match GUIDE.md, so the layout is the same one start-all-services.sh
-# produced natively: main-service 8000, indexing-rpc 8001, inferencing 8003,
-# redis 6379, mongo 27017, mysql 3306,
-# UI 3006.
+# The browser talks to main-service directly on :8000, so that port stays
+# published. To reach it at another address set VITE_API_BASE_URL in .env and
+# run: docker compose up -d --build frontend
 
 # ---------------------------------------------------------------------------
-# Shared settings. Service names replace the 127.0.0.1 addresses in the
-# per-service .env files - those files are listed in every .dockerignore and
-# never reach the image, so everything a service needs is spelled out here.
-# ---------------------------------------------------------------------------
-x-infra-env: &infra-env
-  REDIS_URL: "redis://redis:6379/0"
-  DB_CONNECTION_STRING: "Server=mysql;UserID=root;Password=pass;Database=ccpm"
-  DATABASE_SERVICE_URL: "http://main-service:8000"
-  MAIN_SERVICE_URL: "http://main-service:8000"
-  INDEXING_RPC_SERVER: "indexing-rpc-server:8001"
-  WORKER_BRPOP_TIMEOUT: "5"
-  WORKER_ERROR_RETRY_DELAY: "5"
-
-# Which implementation each piece of infrastructure uses. Every one is a
-# factory branch, so a backend swap is a value here plus credentials:
-#   DB_TYPE       mysql            main-service/app/services/database_factory.py
-#   QUEUE_TYPE    redis            main-service/app/services/queue_factory.py
-#   STORAGE_TYPE  azure|local|...  <service>/app/services/storage_factory.py
-#   VECTOR_STORE  mongo            indexing-rpc-server/app/services/vector_store_factory.py
+# WHERE CONFIGURATION LIVES
 #
-# STORAGE_TYPE is shared between main-service and indexing-rpc-server on
-# purpose: only paths cross the RPC between them, so they must be looking at
-# the same store. Set it to "local" in BOTH (they already share the file-store
-# volume below) to run without Azure, which is what the OpenShift deployment
-# does with a ReadWriteMany PVC in place of that volume.
-x-backend-env: &backend-env
-  DB_TYPE: "mysql"
-  QUEUE_TYPE: "redis"
-  STORAGE_TYPE: "${STORAGE_TYPE:-azure}"
+# ONE file: `.env` next to this one (copy .env.sample to start). Every variable
+# in it is handed to the app containers (main-service, parsing-indexing-service, kb-worker), so adding or
+# changing a setting - a model, a key, a queue name - is an edit to .env and
+# nothing else. Then apply it with:   docker compose up -d
+#
+# This file sets only what is *different inside Docker*, in the block below:
+# service hostnames instead of localhost, and container paths. Those override
+# the plain names in .env (so the same .env also works for a native run,
+# python local.py run) - and each can itself be overridden from .env with its
+# DOCKER_* twin, e.g. DOCKER_REDIS_URL to point the containers at an external
+# Redis. Ports, image tags, container names and build arguments are ${VAR:-default}
+# too: every value here has a name in .env.sample section 9, and the default
+# shown after ":-" is what you get when it is not set.
+# ---------------------------------------------------------------------------
+x-docker-only: &docker-only
+  REDIS_URL: "${DOCKER_REDIS_URL:-redis://redis:6379/0}"
+  # The mssql container below - the same engine as OpenShift.
+  DB_TYPE: "mssql"
+  # Ingestion runs in the kb-worker container below, not inside main-service.
+  QUEUE_TYPE: "celery"
+  DB_CONNECTION_STRING: "${DOCKER_DB_CONNECTION_STRING:-Server=mssql,1433;UserID=sa;Password=${MSSQL_SA_PASSWORD:-Chatbot_Local_1};Database=${MSSQL_DATABASE_NAME:-chatbot}}"
+  MONGO_CONNECTION_STRING: "${DOCKER_MONGO_CONNECTION_STRING:-mongodb://mongo:27017/?directConnection=true}"
+  # main-service's outbound target for the parsing-indexing-service REST API (Delete,
+  # SetLatest - called on file delete / version sync; Search and ingestion now run
+  # in-process in parsing-indexing-service). The service's own PORT needs no override.
+  INDEXING_SERVICE_URL: "http://parsing-indexing-service:8001"
+  # Where the file-store volume is mounted (used when STORAGE_TYPE=local).
   LOCAL_STORAGE_PATH: "/data/files"
-
-# Vector store. Only the compute service holds a client; main-service reaches
-# it through VectorService and knows nothing but the collection name.
-x-vector-env: &vector-env
-  VECTOR_STORE: "mongo"
-  MONGO_CONNECTION_STRING: "mongodb://mongo:27017/?directConnection=true"
-  MONGO_DATABASE_NAME: "ccpm"
-  VECTOR_COLLECTION_NAME: "chatbot_policies"
-
-# Queue names have to agree between producers and consumers. One queue is left:
-#   chatbot_queue  main-service -> kb_worker, in the same process
-# parser_queue, llm_queue and assessment_kb_queue went with the assessment
-# pipeline - main-service opened a connection to each and nothing ever drained
-# them, so the settings were dropped from config.py too.
-x-queue-env: &queue-env
-  CHATBOT_QUEUE_NAME: "chatbot_queue"
-  CHATBOT_QUEUE_DLQ_NAME: "chatbot_queue_dlq"
-  CHATBOT_QUEUE_MAX_RETRIES: "3"
-
-# Azure Blob is external and reached over the internet; four services need it.
-# Values come from the .env file next to this one (compose loads it).
-x-blob-env: &blob-env
-  AZURE_STORAGE_ACCOUNT_URL: "https://${AZURE_STORAGE_ACCOUNT_NAME}.blob.core.windows.net"
-  AZURE_STORAGE_ACCOUNT_NAME: "${AZURE_STORAGE_ACCOUNT_NAME}"
-  AZURE_STORAGE_ACCOUNT_KEY: "${AZURE_STORAGE_ACCOUNT_KEY}"
-  AZURE_STORAGE_CONTAINER_NAME: "${AZURE_STORAGE_CONTAINER_NAME}"
-  BLOB_CONTAINER_NAME: "${AZURE_STORAGE_CONTAINER_NAME}"
-  BLOB_CONNECTION_STRING: "DefaultEndpointsProtocol=https;AccountName=${AZURE_STORAGE_ACCOUNT_NAME};AccountKey=${AZURE_STORAGE_ACCOUNT_KEY};EndpointSuffix=core.windows.net"
-
-x-azure-openai-env: &azure-openai-env
-  AZURE_OPENAI_API_KEY: "${AZURE_OPENAI_API_KEY}"
-  AZURE_OPENAI_ENDPOINT: "${AZURE_OPENAI_ENDPOINT}"
-  AZURE_OPENAI_API_VERSION: "${AZURE_OPENAI_API_VERSION}"
-  AZURE_OPENAI_DEPLOYMENT_NAME: "${AZURE_OPENAI_DEPLOYMENT_NAME}"
-
-x-python-build-args: &python-build-args
-  BASE_REGISTRY: registry.access.redhat.com
-  PIP_INDEX_URL: ""
-  PIP_TRUSTED_HOST: ""
+  # Azure Blob: the indexing service wants a connection string and main-service an
+  # account URL. Both are built here from the three AZURE_STORAGE_* values in .env,
+  # so the account key is entered exactly once.
+  AZURE_STORAGE_ACCOUNT_URL: "https://${AZURE_STORAGE_ACCOUNT_NAME:-}.blob.core.windows.net"
+  BLOB_CONTAINER_NAME: "${AZURE_STORAGE_CONTAINER_NAME:-}"
+  BLOB_CONNECTION_STRING: "DefaultEndpointsProtocol=https;AccountName=${AZURE_STORAGE_ACCOUNT_NAME:-};AccountKey=${AZURE_STORAGE_ACCOUNT_KEY:-};EndpointSuffix=core.windows.net"
 
 x-svc-defaults: &svc-defaults
   restart: unless-stopped
-  networks: [ccpm]
+  networks: [chatbot]
 
 services:
 
@@ -100,11 +63,11 @@ services:
   # hack) for what is one queue - and that also made the managed Azure Cache
   # instance unusable in the OpenShift deploy, which is not cluster-mode.
   redis:
-    image: redis:7-alpine
-    container_name: ccpm-redis
+    image: ${REDIS_IMAGE:-redis:7-alpine}
+    container_name: ${CONTAINER_PREFIX:-chatbot}-redis
     command: ["redis-server", "--appendonly", "yes"]
     ports:
-      - "6379:6379"
+      - "${REDIS_HOST_PORT:-6379}:6379"
     volumes:
       - redis-data:/data
     healthcheck:
@@ -113,14 +76,14 @@ services:
       timeout: 3s
       retries: 20
     restart: unless-stopped
-    networks: [ccpm]
+    networks: [chatbot]
 
   # Replaces the hand-started docker-mongo-1 container the native script used.
   mongo:
-    image: mongo:7
-    container_name: ccpm-mongo
+    image: ${MONGO_IMAGE:-mongo:7}
+    container_name: ${CONTAINER_PREFIX:-chatbot}-mongo
     ports:
-      - "27017:27017"
+      - "${MONGO_HOST_PORT:-27017}:27017"
     volumes:
       - mongo-data:/data/db
     healthcheck:
@@ -129,96 +92,120 @@ services:
       timeout: 5s
       retries: 15
     restart: unless-stopped
-    networks: [ccpm]
+    networks: [chatbot]
 
-  mysql:
-    image: mysql:8
-    container_name: ccpm-mysql
+  # SQL Server - the same engine as OpenShift, so what runs here is what runs
+  # there. Developer edition, local use only. It wants ~2 GB of RAM. The `sa`
+  # password below is for this throwaway container; override it in .env with
+  # MSSQL_SA_PASSWORD (SQL Server rejects weak ones: 8+ chars, 3 of upper /
+  # lower / digit / symbol) and keep it free of ';'.
+  mssql:
+    image: ${MSSQL_IMAGE:-mcr.microsoft.com/mssql/server:2022-latest}
+    container_name: ${CONTAINER_PREFIX:-chatbot}-mssql
     environment:
-      MYSQL_ROOT_PASSWORD: pass
-      MYSQL_DATABASE: ccpm
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: "${MSSQL_PID:-Developer}"
+      MSSQL_SA_PASSWORD: "${MSSQL_SA_PASSWORD:-Chatbot_Local_1}"
     ports:
-      - "3306:3306"
+      - "${MSSQL_HOST_PORT:-1433}:1433"
     volumes:
-      - mysql-data:/var/lib/mysql
-      # The schema start-all-services.sh used to apply by hand. Numbered
-      # because the entrypoint runs these in filename order - and only once,
-      # on a fresh volume.
-      - ./main-service/scripts/files_table_and_procedures.sql:/docker-entrypoint-initdb.d/01-files_table_and_procedures.sql:ro
-      - ./main-service/scripts/files_knowledge_base_column.sql:/docker-entrypoint-initdb.d/02-files_knowledge_base_column.sql:ro
-      - ./main-service/scripts/get_files_by_entity_procedure.sql:/docker-entrypoint-initdb.d/03-get_files_by_entity_procedure.sql:ro
-      - ./main-service/scripts/chatbot_tables_and_procedures.sql:/docker-entrypoint-initdb.d/04-chatbot_tables_and_procedures.sql:ro
+      - mssql-data:/var/opt/mssql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-ppass"]
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q 'SELECT 1' -b -o /dev/null"]
       interval: 10s
       timeout: 5s
       retries: 20
       start_period: 30s
     restart: unless-stopped
-    networks: [ccpm]
+    networks: [chatbot]
+
+  # There is no schema container: the SQL Server image starts empty, and
+  # main-service creates the `chatbot` database and applies
+  # main-service-chatbot/scripts/mssql/*.sql itself at startup (AUTO_APPLY_SCHEMA,
+  # on by default). It only has to wait for the server to accept logins, which
+  # the healthcheck above and `depends_on` below take care of. Applied scripts are
+  # recorded in schema_migrations, so every later start is a no-op.
 
   # ------------------------------------------------------------- services ---
 
   main-service:
     <<: *svc-defaults
     build:
-      context: ./main-service
-      args: *python-build-args
-    image: ccpm/main-service:local
-    container_name: ccpm-main-service
+      context: ./main-service-chatbot
+      args:
+        BASE_REGISTRY: "${BASE_REGISTRY:-registry.access.redhat.com}"
+        PIP_INDEX_URL: "${PIP_INDEX_URL:-}"
+        PIP_TRUSTED_HOST: "${PIP_TRUSTED_HOST:-}"
+    image: ${MAIN_SERVICE_IMAGE:-chatbot/main-service:local}
+    container_name: ${CONTAINER_PREFIX:-chatbot}-main-service
+    env_file: .env
     environment:
-      <<: [*infra-env, *backend-env, *queue-env, *blob-env, *azure-openai-env]
-      DEBUG: "True"
-      # Local only: skips JWT validation so the UI works without an auth server.
-      DISABLE_AUTH: "True"
-      AZURE_STORAGE_SAS_EXPIRY_MINUTES: "30"
-      SECRET_KEY: "ccpm-local-dev-secret-key"
-      ALGORITHM: "HS256"
-      ACCESS_TOKEN_EXPIRE_MINUTES: "30"
-      # Chat and knowledge base, absorbed from chatbot-inferencing-service.
-      MONGODB_COLLECTION_NAME: "chatbot_policies"
-      # Ollama fallback, used only when the Azure OpenAI vars above are unset.
-      LLM_API_URL: "http://127.0.0.1:11434"
-      MODEL_NAME: "phi4"
-      TEMPERATURE: "0.1"
-      RPC_SERVER: "indexing-rpc-server:8001"
+      <<: *docker-only
     ports:
-      - "8000:8000"
+      - "${MAIN_SERVICE_HOST_PORT:-8000}:8000"
     volumes:
       # The file store, when STORAGE_TYPE=local. Mounted into the compute
       # service too - one document is written here and read there. On
       # OpenShift this is a ReadWriteMany PVC.
       - file-store:/data/files
     depends_on:
-      mysql: {condition: service_healthy}
+      mssql: {condition: service_healthy}
       mongo: {condition: service_healthy}
       redis: {condition: service_healthy}
 
-  indexing-rpc-server:
+  # Ingests uploaded files: the parsing-indexing-service image running a Celery worker.
+  # CELERY_CONCURRENCY (in .env) is how many files it works on at once - raise it to go faster.
+  kb-worker:
+    <<: *svc-defaults
+    image: ${INDEXING_IMAGE:-chatbot/parsing-indexing-service:local}
+    container_name: ${CONTAINER_PREFIX:-chatbot}-kb-worker
+    command: ["celery", "-A", "app.celery_app", "worker"]
+    env_file: .env
+    environment:
+      <<: *docker-only
+      MAIN_SERVICE_URL: "http://main-service:8000"
+    volumes:
+      - file-store:/data/files
+    depends_on:
+      main-service: {condition: service_started}
+      parsing-indexing-service: {condition: service_started}
+      redis: {condition: service_healthy}
+      mssql: {condition: service_healthy}
+
+  parsing-indexing-service:
     <<: *svc-defaults
     build:
-      context: ./indexing-rpc-server
+      context: ./parsing-indexing-service
       args:
-        BASE_REGISTRY: registry.access.redhat.com
-        PIP_INDEX_URL: ""
-        PIP_TRUSTED_HOST: ""
-        EPEL_RPM_URL: https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
-        # Use "vendored" instead once vendor/gte-multilingual-base is populated.
-        HF_MODEL_MODE: download
+        BASE_REGISTRY: "${BASE_REGISTRY:-registry.access.redhat.com}"
+        PIP_INDEX_URL: "${PIP_INDEX_URL:-}"
+        PIP_TRUSTED_HOST: "${PIP_TRUSTED_HOST:-}"
+        EPEL_RPM_URL: "${EPEL_RPM_URL:-https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm}"
+        # "vendored" instead once vendor/gte-multilingual-base is populated.
+        HF_MODEL_MODE: "${HF_MODEL_MODE:-download}"
+        # local bakes torch + the embedding model into the image (~600 MB, long
+        # first build). remote (default) leaves them out - main-service's own
+        # in-process Search only supports EMBEDDING_TYPE=litellm/azure/remote
+        # anyway (see its config.py), so EMBEDDING_MODE=local only makes sense
+        # if this pod's own indexing-time embedding needs it independently of
+        # what Search uses, which is not the default setup.
+        EMBEDDING_MODE: "${EMBEDDING_MODE:-remote}"
         # tesseract* / qpdf / unpaper are not in UBI9 or EPEL9; skip rather than
         # fail. Only scanned-PDF OCR needs them.
-        OCR_MODE: optional
-    image: ccpm/indexing-rpc-server:local
-    container_name: ccpm-indexing-rpc-server
+        OCR_MODE: "${OCR_MODE:-optional}"
+        OCR_PACKAGES: "${OCR_PACKAGES:-tesseract tesseract-langpack-eng tesseract-langpack-ara ghostscript qpdf pngquant unpaper libreoffice-headless}"
+    image: ${INDEXING_IMAGE:-chatbot/parsing-indexing-service:local}
+    container_name: ${CONTAINER_PREFIX:-chatbot}-parsing-indexing-service
+    env_file: .env
     environment:
-      <<: [*infra-env, *backend-env, *vector-env, *blob-env]
-      GRPC_PORT: "8001"
+      <<: *docker-only
     ports:
-      - "8001:8001"
+      - "${INDEXING_HOST_PORT:-8001}:8001"
     volumes:
       - file-store:/data/files
     depends_on:
       mongo: {condition: service_healthy}
+
 
   # nginx serving the built SPA under /chatbot/. BUILD_SCRIPT=build:local drops
   # the Module Federation remote vite.qa.ts pulls from a public IP - the
@@ -228,25 +215,27 @@ services:
     build:
       context: ./FE
       args:
-        NODE_IMAGE: node:20-alpine
-        NGINX_IMAGE: nginxinc/nginx-unprivileged:1.25-alpine
-        NPM_REGISTRY: ""
-        BUILD_SCRIPT: "build:local"
-    image: ccpm/chatbot-fe:local
-    container_name: ccpm-frontend
+        BASE_REGISTRY: "${BASE_REGISTRY:-registry.access.redhat.com}"
+        NPM_REGISTRY: "${NPM_REGISTRY:-}"
+        BUILD_SCRIPT: "${BUILD_SCRIPT:-build:local}"
+        # Where the BROWSER reaches main-service. Baked into the UI at build time, so
+        # after changing it run: docker compose up -d --build frontend
+        VITE_API_BASE_URL: "${VITE_API_BASE_URL:-}"
+    image: ${FRONTEND_IMAGE:-chatbot/frontend:local}
+    container_name: ${CONTAINER_PREFIX:-chatbot}-frontend
     ports:
-      - "3006:8080"
+      - "${FRONTEND_HOST_PORT:-3006}:8080"
     depends_on:
       - main-service
 
 networks:
-  ccpm:
-    name: ccpm
+  chatbot:
+    name: ${CONTAINER_PREFIX:-chatbot}
 
 volumes:
   redis-data:
   mongo-data:
-  mysql-data:
+  mssql-data:
   # Stands in for the OpenShift PVC. Shared by main-service and
   # indexing-rpc-server, which is what STORAGE_TYPE=local requires.
   file-store:

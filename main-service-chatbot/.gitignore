@@ -1,0 +1,11 @@
+# Everything generic (caches, venvs, .env, build output) is in the repo-root .gitignore.
+
+# SQL dumps stay out of git; the schema this service is built from does not:
+# scripts/mssql/*.sql creates the files and chatbot_* tables and every stored
+# procedure, and main-service applies it at startup. Without the exception a
+# fresh clone has no schema and the stack comes up with no tables.
+*.sql
+!scripts/**/*.sql
+
+.coverage
+htmlcov/
