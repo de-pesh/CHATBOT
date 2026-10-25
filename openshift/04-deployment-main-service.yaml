@@ -18,6 +18,14 @@ spec:
       # pod always lands in GID 0 (baked into the UBI9 image's own user
       # database, not a Kubernetes setting) - fsGroup: 0 makes the PVC mount
       # Remove if quay-quay-registry.apps.dda-desc-az1-01.desccii.local/dda-desc/chatbot-main-service is a public repository.
+      # LiteLLM proxy hostname - cluster CoreDNS does not resolve govai.ae.
+      # If the IP changes: update this in 04-deployment-main-service.yaml,
+      # 05-deployment-parsing-indexing-service.yaml, and 05b-deployment-kb-worker.yaml,
+      # then re-apply all three with `oc apply -f openshift/`.
+      hostAliases:
+        - ip: "10.231.255.253"
+          hostnames:
+            - "llmapi.govai.ae"
       imagePullSecrets:
         - name: quay-pull-secret
       # The database and tables are not created here: main-service does it

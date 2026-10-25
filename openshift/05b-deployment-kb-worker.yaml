@@ -18,6 +18,12 @@ spec:
       labels:
         app: kb-worker
     spec:
+      # LiteLLM proxy hostname - cluster CoreDNS does not resolve govai.ae.
+      # If the IP changes: update hostAliases in 04/05/05b deployment YAMLs and re-apply.
+      hostAliases:
+        - ip: "10.231.255.253"
+          hostnames:
+            - "llmapi.govai.ae"
       imagePullSecrets:
         - name: quay-pull-secret
       containers:

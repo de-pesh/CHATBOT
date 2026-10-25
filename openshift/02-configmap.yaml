@@ -225,7 +225,7 @@ data:
   EMBEDDING_MODEL_NAME: "qwen3-embedding-8b-mig"
   EMBEDDING_DIMENSION: "4096"
   # EMBEDDING_SEND_DIMENSIONS: "false"   # "true" if the model can shorten its output to EMBEDDING_DIMENSION
-  # EMBEDDING_BATCH_SIZE: "64"           # texts per request; lower it if the proxy rejects large batches
+  EMBEDDING_BATCH_SIZE: "8"             # lowered from 64 - proxy has a 25k token/window rate limit
 
   # MIME-type inspection: the Tika pod from 09-deployment-tika.yaml detects the
   # actual content type of each uploaded file before parsing begins. Remove this
