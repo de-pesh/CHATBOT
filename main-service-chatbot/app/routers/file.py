@@ -169,6 +169,48 @@ async def create_files(
 
 
 @router.get(
+    "/download-by-name",
+    response_class=StreamingResponse,
+    summary="Download a file by name",
+    description=(
+        "Downloads a file by its original name from the configured file store. "
+        "Available to all authenticated users, not just admins — intended for citation download links "
+        "shown in chat answers. Pass `path` (the blob key stored in the citation) to skip the database "
+        "lookup; omit it to resolve the path from the file name."
+    ),
+)
+async def download_file_by_name(
+    current_user: CurrentUserDep,
+    name: str = Query(..., description="Original file name"),
+    path: str | None = Query(None, description="Stored blob path, if known — skips the database lookup"),
+    db_service: DatabaseService = Depends(get_db_service),
+    file_storage_service: FileStorageService = Depends(get_file_storage_service),
+) -> StreamingResponse:
+    stored_path = path
+    mimetype = "application/octet-stream"
+    if not stored_path:
+        results = await db_service.call_procedure(StoredProcedures.FILTER_FILES, [None, name, None, True, 1, 1])
+        rows = results[0] if results else []
+        row = rows[0] if rows else None
+        if not row:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"File '{name}' not found.")
+        stored_path = row.get("file_path")
+        if not stored_path:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"File '{name}' has no stored path.")
+        mimetype = row.get("mimetype") or mimetype
+    blob_name = extract_blob_path_from_url(stored_path)
+    try:
+        file_stream = await file_storage_service.download_file(blob_name)
+    except FileNotFoundError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"File '{name}' not found in storage.")
+    return StreamingResponse(
+        file_stream,
+        media_type=mimetype,
+        headers={"Content-Disposition": attachment_disposition(name)},
+    )
+
+
+@router.get(
     "/{file_id}/versions",
     summary="All versions of a file's document",
     description="Every upload of the document this file belongs to, newest first, deleted ones included: "

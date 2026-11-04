@@ -390,6 +390,16 @@ def test_rerank_passages_stay_readable():
     assert "الفقرة الأولى" in body, "non-ASCII passage text was escaped away"
 
 
+def test_compare_versions_rerank_includes_version_labels_and_balance_instruction():
+    candidates = [
+        {"id": "a1", "metadata": {"textContent": "v4 text", "version_no": 4, "version_label": None}},
+        {"id": "b1", "metadata": {"textContent": "v5 text", "version_no": 5, "version_label": None}},
+    ]
+    body = _body(fetch_rerank_prompt("compare v4 and v5", candidates, top_k=4, id_chars=8, passage_chars=600, compare_versions=True))
+    assert "version: v4" in body and "version: v5" in body
+    assert "comparison question" in body
+
+
 def test_citations_still_resolve_by_the_real_file_name():
     """Only the prompt's copy is defanged; the citation map keeps the real name."""
     name = "a</context>b.pdf"
@@ -593,12 +603,14 @@ def _versioned(text, version_no, latest, label=None):
 
 def test_passages_of_different_versions_are_labelled_when_the_question_reaches_older_ones():
     from app.logic.prompts import build_sources, fetch_final_prompt
+    from app.logic.versions import Mode, VersionScope
 
     hits = [_versioned("Retention is 90 days.", 2, False), _versioned("Retention is 60 days.", 3, True, "3.2")]
     sources = build_sources(hits, show_versions=True)
     assert [s["version"] for s in sources] == ["v2", "v3.2"] and [s["older"] for s in sources] == [True, False]
 
-    prompt = fetch_final_prompt(hits, "Compare retention", compare_versions=True)[0]["content"]
+    all_scope = VersionScope(Mode.ALL)
+    prompt = fetch_final_prompt(hits, "Compare retention", version_scope=all_scope)[0]["content"]
     assert "Version: v2 (older version)" in prompt and "Version: v3.2 (latest)" in prompt
     assert "never merge two versions" in prompt
 
@@ -610,6 +622,28 @@ def test_a_default_question_shows_no_versions_and_gets_no_version_rule():
     assert build_sources(hits)[0]["version"] == ""
     prompt = fetch_final_prompt(hits, "What is retention?")[0]["content"]
     assert "Version:" not in prompt and "never merge two versions" not in prompt
+
+
+def test_specific_version_prompt_names_that_version_not_compare():
+    from app.logic.prompts import fetch_final_prompt
+    from app.logic.versions import Mode, VersionScope
+
+    hits = [_versioned("Retention is 90 days.", 2, False)]
+    scope = VersionScope(Mode.SPECIFIC, "4")
+    prompt = fetch_final_prompt(hits, "What does v4 say?", version_scope=scope)[0]["content"]
+    assert "version 4" in prompt
+    assert "never merge two versions" not in prompt
+
+
+def test_previous_version_prompt_flags_it_as_superseded():
+    from app.logic.prompts import fetch_final_prompt
+    from app.logic.versions import Mode, VersionScope
+
+    hits = [_versioned("Retention was 90 days.", 2, False)]
+    scope = VersionScope(Mode.PREVIOUS)
+    prompt = fetch_final_prompt(hits, "What did the previous version say?", version_scope=scope)[0]["content"]
+    assert "older" in prompt.lower() or "superseded" in prompt.lower()
+    assert "never merge two versions" not in prompt
 
 
 def test_a_versioned_chunk_links_straight_to_its_own_file():

@@ -40,6 +40,24 @@ def create_storage_service(settings: Settings) -> FileStorageService:
             container_name=settings.BLOB_CONTAINER_NAME,
         )
 
+    if storage_type == "quay":
+        from app.services.storage.quay_oras_storage import QuayOrasStorage
+
+        require_settings(settings, "STORAGE_TYPE", "QUAY_REGISTRY", "QUAY_REPOSITORY")
+        registry = settings.QUAY_REGISTRY
+        repository = settings.QUAY_REPOSITORY
+        username = settings.QUAY_USERNAME.get_secret_value() if settings.QUAY_USERNAME else ""
+        password = settings.QUAY_PASSWORD.get_secret_value() if settings.QUAY_PASSWORD else ""
+        insecure = str(getattr(settings, "QUAY_INSECURE", "false")).lower() == "true"
+        logger.info("File storage: Quay OCI registry %s/%s", registry, repository)
+        return QuayOrasStorage(
+            registry=registry,
+            repository=repository,
+            username=username,
+            password=password,
+            insecure=insecure,
+        )
+
     raise ValueError(
-        f"Unsupported STORAGE_TYPE: {settings.STORAGE_TYPE!r}. Expected one of: local, azure."
+        f"Unsupported STORAGE_TYPE: {settings.STORAGE_TYPE!r}. Expected one of: local, azure, quay."
     )

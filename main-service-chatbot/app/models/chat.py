@@ -57,6 +57,15 @@ class ChatResult(BaseModel):
         False, exclude=True,
         description="True when the evidence gate answered because the search found nothing usable.",
     )
+    version_mode: str | None = Field(
+        None,
+        description="Which version scope the question triggered: 'specific', 'previous', or 'all'. "
+                    "Absent (None) for a normal latest-only answer.",
+    )
+    version_token: str | None = Field(
+        None,
+        description="For mode='specific': the version number or label that was asked for, e.g. '4'. Absent otherwise.",
+    )
     intent: str | None = Field(
         None,
         description="What the intent step decided: 'chitchat' or 'kb_overview' when the reply was "
@@ -77,7 +86,7 @@ class ChatSessionBase(BaseModel):
     tenant_id: str = Field("22222222-2222-2222-2222-222222222222", description="Tenant GUID")
     user_id: str = Field("33333333-3333-3333-3333-333333333333", description="User GUID")
     user_type: str = Field("demo_user", description="Type of user")
-    is_admin: bool = Field(True, description="Is admin user")
+    is_admin: bool = Field(False, description="Is admin user")
     is_active: bool = True
 
 class ChatSessionUpdate(BaseModel):

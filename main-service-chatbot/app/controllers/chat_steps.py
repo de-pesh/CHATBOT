@@ -46,9 +46,9 @@ from app.logic.replies import (
     parse_json_response,
     with_reminder,
 )
-from app.logic.rerank import dedupe_candidates, fuse_query_hits, reorder_by_ids
+from app.logic.rerank import balance_versions, dedupe_candidates, fuse_query_hits, reorder_by_ids, rerank_shortlist_balanced
 from app.logic.trace import clipped, hits_summary, top_score_of
-from app.logic.versions import LATEST, detect_scope
+from app.logic.versions import LATEST, Mode, detect_scope
 from app.services.llm.chat_llm import ChatLLM
 from app.services.vector.search_runtime import SearchRuntime
 from fastapi import HTTPException, status
@@ -319,9 +319,19 @@ class ChatTurn:
         pulls in broader, noisier recall on purpose, so this is the precision pass. Falls back to
         the score order, cut to RERANK_TOP_K, if the call or its JSON fails: a degraded ranking
         beats no answer.
+
+        For ALL-mode (comparison) queries, three extra steps ensure both versions are represented:
+        1. The shortlist is balanced so each version gets at least RERANK_COMPARE_MIN_PER_VERSION slots.
+        2. The rerank prompt labels each passage with its version and asks the LLM to keep both sides.
+        3. A post-rerank balancer fills any version with fewer than the minimum from unused candidates.
         """
         s = self.settings
-        candidates = rerank_shortlist(dedupe_candidates(hits), s.RERANK_MAX_CANDIDATES)
+        deduped = dedupe_candidates(hits)
+        comparing = self.version_scope.mode is Mode.ALL
+        if comparing:
+            candidates = rerank_shortlist_balanced(deduped, s.RERANK_MAX_CANDIDATES, s.RERANK_COMPARE_MIN_PER_VERSION)
+        else:
+            candidates = rerank_shortlist(deduped, s.RERANK_MAX_CANDIDATES)
         if not candidates:
             self.timer.lap("rerank_ms")
             return candidates
@@ -331,7 +341,7 @@ class ChatTurn:
                 self.llm,
                 fetch_rerank_prompt(
                     self.query_text, candidates, s.RERANK_TOP_K, s.RERANK_ID_CHARS, s.RERANK_PASSAGE_CHARS,
-                    short_ids=s.RERANK_SHORT_IDS,
+                    short_ids=s.RERANK_SHORT_IDS, compare_versions=comparing,
                 ),
                 usable_rerank, "rerank",
             )
@@ -344,6 +354,8 @@ class ChatTurn:
         except Exception as e:
             logger.warning("Reranking failed, falling back to score order: %s", e)
             result = fallback
+        if comparing:
+            result = balance_versions(result, deduped, s.RERANK_TOP_K, s.RERANK_COMPARE_MIN_PER_VERSION)
         self.timer.lap("rerank_ms")
         self.trace["reranked"] = hits_summary(result, s.TRACE_MAX_HITS)
         return result
@@ -369,7 +381,7 @@ class ChatTurn:
         return self.history + fetch_final_prompt(
             passages, question=self.query_text, catalog_names=catalog_names,
             standalone_question=standalone, language=(language or "").title(), user_context=self.user_context,
-            compare_versions=self.version_scope.wants_older_versions,
+            version_scope=self.version_scope,
         )
 
     async def stream_answer(self, messages: list):
@@ -429,5 +441,5 @@ class ChatTurn:
         self.timer.since_turn("pipeline_ms")
         return result_event(
             response, [self.settings.MONGODB_COLLECTION_NAME], sources, self.timer.timings, passages=passages,
-            trace=self.trace,
+            trace=self.trace, version_scope=self.version_scope,
         )

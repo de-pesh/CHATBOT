@@ -1,0 +1,26 @@
+# EgressFirewall for the ai-common namespace.
+# Allows pods to reach the OpenShift ingress router node (10.228.146.68) on
+# ports 80 and 443 — required for the Quay OCI registry storage backend
+# (STORAGE_TYPE=quay) whose route resolves to that IP.
+#
+# WARNING: if an EgressFirewall named "default" already exists in ai-common,
+# applying this will REPLACE it entirely. The allow-all rule at the bottom
+# preserves unrestricted egress for everything else (DNS, MSSQL, Redis, Mongo,
+# LiteLLM proxy) so existing connectivity is not broken. If your cluster
+# already has a stricter egress policy you want to keep, merge the first rule
+# into the existing object instead of applying this file on its own.
+apiVersion: k8s.ovn.org/v1
+kind: EgressFirewall
+metadata:
+  name: default
+  namespace: ai-dca
+spec:
+  egress:
+    # Allow Quay OCI registry (OpenShift ingress router node IP)
+    - type: Allow
+      to:
+        cidrSelector: 10.228.146.68/32
+    # Allow everything else so existing service connectivity is unaffected
+    - type: Allow
+      to:
+        cidrSelector: 0.0.0.0/0

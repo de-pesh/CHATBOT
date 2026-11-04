@@ -17,6 +17,7 @@ _H_ENTITY_ID  = "x-entity-id"
 _H_TENANT_ID  = "x-tenant-id"
 _H_USER_ID    = "x-user-id"
 _H_USER_TYPE  = "x-user-type"
+_H_IS_ADMIN   = "x-is-admin"   # "true" → admin, anything else (including absent) → regular user
 
 # Declares the login to OpenAPI so Swagger (/docs) shows an "Authorize" button that signs in through
 # /auth/authenticate. It only documents: the token is still read by oauth2_scheme below, which stays lenient
@@ -77,6 +78,7 @@ def _tenant_context_from_headers(request: Request, settings: Settings) -> dict:
         "tenant_id": request.headers.get(_H_TENANT_ID) or DEMO_TENANT_ID,
         "user_id":   request.headers.get(_H_USER_ID)   or DEMO_USER_ID,
         "user_type": request.headers.get(_H_USER_TYPE)  or "demo_user",
+        "is_admin":  request.headers.get(_H_IS_ADMIN, "").lower() == "true",
     }
 
 
@@ -87,18 +89,43 @@ async def get_current_user(
     settings: Settings = Depends(get_settings)
 ) -> CurrentUser:
     if getattr(settings, "DISABLE_AUTH", False):
+        # Guard against header forgery when the API is reachable from the public ingress.
+        # In platform-integration mode the proxy always injects X-Internal-Token; a browser
+        # that reaches the API directly cannot know the secret and is rejected here.
+        if getattr(settings, "TENANT_CONTEXT_ENABLED", False):
+            secret = getattr(settings, "INTERNAL_API_SECRET", None)
+            if secret is not None:
+                provided = request.headers.get("x-internal-token", "")
+                if provided != secret.get_secret_value():
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail="Missing or invalid internal token.",
+                        headers={"WWW-Authenticate": "Bearer"},
+                    )
+
         ctx = _tenant_context_from_headers(request, settings)
+        # In platform-integration mode (TENANT_CONTEXT_ENABLED=True) the host app injects the
+        # real user's GUID via X-User-Id. We use that GUID as the email/actor key so that session
+        # and history ownership is isolated per real user — not shared across everyone under
+        # one hardcoded "dev@local.dev" identity. In pure dev mode (TENANT_CONTEXT_ENABLED=False)
+        # no headers are injected, so the single dev identity is intentional.
+        actor = ctx.get("user_id") or DEMO_USER_ID
+        is_admin = ctx.get("is_admin", True)  # dev mode: default admin; platform mode: from header
+        # CurrentUser.email is an EmailStr — the actor (user_id) may be a plain
+        # name or GUID without @. Append a synthetic domain so Pydantic accepts it
+        # while still keeping per-user isolation (different actors → different emails).
+        actor_email = actor if "@" in actor else f"{actor}@platform.local"
         return CurrentUser(
-            id=ctx.get("user_id", DEMO_USER_ID),
+            id=actor,
             entity_id=ctx.get("entity_id", DEMO_ENTITY_ID),
             tenant_id=ctx.get("tenant_id", DEMO_TENANT_ID),
-            user_id=ctx.get("user_id", DEMO_USER_ID),
+            user_id=actor,
             user_type=ctx.get("user_type", "demo_user"),
-            is_admin=True,
-            first_name="Dev",
+            is_admin=is_admin,
+            first_name="Platform",
             last_name="User",
-            email="dev@local.dev",
-            role="admin",
+            email=actor_email,
+            role="admin" if is_admin else "user",
             is_active=True,
             hashed_password="",
             created_on=datetime.utcnow(),
@@ -183,9 +210,16 @@ def require_admin(
     current_user: Annotated[CurrentUser, Depends(get_current_user)],
     settings: Settings = Depends(get_settings),
 ) -> bool:
-    """Gates admin routes checking is_admin flag or role."""
-    if getattr(settings, "DISABLE_AUTH", False):
-        return True
+    """Gates admin routes checking is_admin flag or role.
+
+    Pure dev mode (DISABLE_AUTH=True, TENANT_CONTEXT_ENABLED=False): bypass, single dev identity.
+    Platform-integration mode (DISABLE_AUTH=True, TENANT_CONTEXT_ENABLED=True): enforce is_admin —
+    the host injects real user context and regular platform users must not reach admin routes.
+    """
+    disable_auth = getattr(settings, "DISABLE_AUTH", False)
+    tenant_mode  = getattr(settings, "TENANT_CONTEXT_ENABLED", False)
+    if disable_auth and not tenant_mode:
+        return True  # pure local dev — single identity, no gate needed
     if not current_user.is_admin and current_user.role != "admin":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin only.")
     return True

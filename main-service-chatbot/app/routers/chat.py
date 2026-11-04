@@ -35,6 +35,7 @@ from app.logic.chat_records import (
     session_list_params,
 )
 from app.logic.chat_turn import split_chat
+from app.logic.versions import Mode, VersionScope
 from app.logic.feedback import (
     existing_feedback_id,
     feedback_lookup_params,
@@ -253,7 +254,7 @@ async def chat_stream(
                     yield sse_frame(*shown)
                 elif event["type"] == "sources":
                     # The passages are known before the answer is written, so resolve the download links now, alongside it.
-                    url_prefetch = asyncio.create_task(prefetch_citation_urls(event["sources"], storage, db_service))
+                    url_prefetch = asyncio.create_task(prefetch_citation_urls(event["sources"], storage, db_service, settings))
                 elif event["type"] == "result":
                     result = event["result"]
             if result is None:
@@ -276,7 +277,8 @@ async def chat_stream(
 
             timings = turn_timings(result.timings, request_start, prep_ms, linkify_ms)
             suggested = await generate_suggested_questions(chat_llm, prompt, result.response, result.sources)
-            yield sse_frame("done", done_payload(answer, conversation_id, history_id, result.collections, timings, suggested))
+            vs = VersionScope(Mode(result.version_mode), result.version_token) if result.version_mode else None
+            yield sse_frame("done", done_payload(answer, conversation_id, history_id, result.collections, timings, suggested, version_scope=vs))
 
         except Exception as e:
             logger.exception("An error occurred during streaming chat processing.")

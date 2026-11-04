@@ -1,9 +1,15 @@
-# Shared file store for STORAGE_TYPE=local. Must be ReadWriteMany: main-service
-# and indexing-rpc-server both mount it, and only paths cross the REST
-# boundary between them - main-service writes the upload, the compute service
-# reads it back, parses it, writes the extracted text, and main-service
-# indexes that path. An RWO volume binds to one node and the second pod
-# either fails to mount or silently sees a different (empty) volume.
+# Shared file store for STORAGE_TYPE=local.
+#
+# NOT NEEDED when STORAGE_TYPE=quay: skip this file entirely and remove the
+# volumeMounts/volumes sections from 04/05/05b deployment YAMLs. See the
+# switch instructions in 02-configmap.yaml.
+#
+# Must be ReadWriteMany: main-service and indexing-rpc-server both mount it,
+# and only paths cross the REST boundary between them - main-service writes
+# the upload, the compute service reads it back, parses it, writes the
+# extracted text, and main-service indexes that path. An RWO volume binds to
+# one node and the second pod either fails to mount or silently sees a
+# different (empty) volume.
 #
 # Ask your cluster admin which StorageClass supports RWX (commonly a CephFS
 # or NFS-backed one - "ocs-storagecluster-cephfs" on OpenShift Data

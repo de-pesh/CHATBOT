@@ -12,6 +12,7 @@ upload gets a randomly-prefixed blob key and a file name never maps to a fixed p
 """
 import asyncio
 import logging
+from urllib.parse import quote
 
 from app.config import Settings
 from app.logic.citations import (
@@ -29,6 +30,7 @@ logger = logging.getLogger(__name__)
 
 async def _resolve_citation_url(
     storage: FileStorageService, db_service: DatabaseService, file_name: str, stored_path: str = "",
+    chatbot_base_url: str = "",
 ) -> str | None:
     """Maps a cited document name to a fetchable URL, or None if there is none.
 
@@ -39,6 +41,10 @@ async def _resolve_citation_url(
     GET /files uses - good enough here since the name comes from the metadata of
     a passage that was retrieved from that very file. A chunk that carries where
     its file is stored (`stored_path`) is linked straight to it, no lookup.
+
+    When the storage backend has no public URL (Quay/OCI, local PVC) and
+    `chatbot_base_url` is set, falls back to the service's own download endpoint
+    so citation links remain clickable without requiring direct storage access.
     """
     if not file_name:
         return None
@@ -51,16 +57,23 @@ async def _resolve_citation_url(
             stored_path = rows[0].get("file_path") if rows else None
             if not stored_path:
                 return None
-        return storage.get_download_url(stored_path)
+        url = storage.get_download_url(stored_path)
+        if url:
+            return url
+        if chatbot_base_url:
+            return f"{chatbot_base_url.rstrip('/')}/files/download-by-name?name={quote(file_name)}"
+        return None
     except Exception:
         logger.exception("Failed to build a download URL for %s", stored_path or file_name)
         return None
 
 
-async def _resolve_urls(documents: dict, storage: FileStorageService, db_service: DatabaseService) -> dict:
+async def _resolve_urls(
+    documents: dict, storage: FileStorageService, db_service: DatabaseService, chatbot_base_url: str = "",
+) -> dict:
     """{url key: URL or None} for each entry of `documents` ({url key: (file name, stored path or "")}), looked up at once."""
     resolved = await asyncio.gather(
-        *(_resolve_citation_url(storage, db_service, name, path) for name, path in documents.values())
+        *(_resolve_citation_url(storage, db_service, name, path, chatbot_base_url) for name, path in documents.values())
     )
     return dict(zip(documents, resolved))
 
@@ -71,7 +84,9 @@ def _documents(sources: list) -> dict:
     return {url_key(s): (s["file_name"], s.get("stored_path", "")) for s in sources if s.get("file_name")}
 
 
-async def prefetch_citation_urls(sources: list, storage: FileStorageService, db_service: DatabaseService) -> dict:
+async def prefetch_citation_urls(
+    sources: list, storage: FileStorageService, db_service: DatabaseService, settings: Settings | None = None,
+) -> dict:
     """Resolves a download URL for every document among `sources`, at once.
 
     Started as soon as the passages are known - while the model is still writing
@@ -80,7 +95,8 @@ async def prefetch_citation_urls(sources: list, storage: FileStorageService, db_
     documents the answer may end up not citing; that is a handful of cheap
     lookups run alongside a generation that takes seconds.
     """
-    return await _resolve_urls(_documents(sources), storage, db_service)
+    base = (settings.CHATBOT_BASE_URL or "") if settings else ""
+    return await _resolve_urls(_documents(sources), storage, db_service, base)
 
 
 async def linkify_citations(
@@ -112,8 +128,9 @@ async def linkify_citations(
             urls = dict(await prefetched)
         except Exception:
             logger.exception("Prefetching citation URLs failed; resolving them now.")
+    base = settings.CHATBOT_BASE_URL or ""
     documents = _documents(by_n.values())
     missing = {key: documents[key] for key in cited_url_keys(text, by_n) if key not in urls}
-    urls.update(await _resolve_urls(missing, storage, db_service))
+    urls.update(await _resolve_urls(missing, storage, db_service, base))
 
     return render_markers(text, by_n, urls, settings.CITATION_LINK_STYLE, settings.CITATION_LABEL_NAME_WIDTH)

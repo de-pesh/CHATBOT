@@ -81,7 +81,27 @@ def create_storage_service(settings: Settings) -> FileStorageService:
         # Keyword names matter: they are the constructor's own.
         return NextCloudFileStorage(webdav_url=url, webdav_user=user, webdav_pass=password)
 
+    if storage_type == "quay":
+        from app.services.storage.quay_oras_storage import QuayOrasStorage
+
+        registry, repository, username, password = _require(
+            settings,
+            "QUAY_REGISTRY",
+            "QUAY_REPOSITORY",
+            "QUAY_USERNAME",
+            "QUAY_PASSWORD",
+        )
+        insecure = str(getattr(settings, "QUAY_INSECURE", "false")).lower() == "true"
+        logger.info("File storage: Quay OCI registry %s/%s", registry, repository)
+        return QuayOrasStorage(
+            registry=registry,
+            repository=repository,
+            username=username,
+            password=password,
+            insecure=insecure,
+        )
+
     raise ValueError(
         f"Unsupported STORAGE_TYPE: {settings.STORAGE_TYPE!r}. "
-        f"Expected one of: local, azure, nextcloud."
+        f"Expected one of: local, azure, nextcloud, quay."
     )

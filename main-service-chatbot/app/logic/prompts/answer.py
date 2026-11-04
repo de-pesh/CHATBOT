@@ -6,7 +6,37 @@ from app.logic.prompts.profile import USER_PROFILE_RULE, user_profile_block
 from app.logic.prompts.sources import _format_context
 
 
-def fetch_final_prompt(all_results, question, catalog_names="", standalone_question="", language="", user_context=None, compare_versions=False):
+def _version_instruction(version_scope) -> str:
+    """A prompt line telling the model which version(s) the retrieved passages come from.
+
+    Returns "" for LATEST (no special instruction needed).
+    """
+    if version_scope is None:
+        return ""
+    from app.logic.versions import Mode
+    mode = version_scope.mode
+    if mode is Mode.LATEST:
+        return ""
+    if mode is Mode.SPECIFIC:
+        v = version_scope.token or "the requested"
+        return (
+            f"- The retrieved passages are specifically from version {v} of the document. "
+            f"Make clear in your answer that you are referring to version {v}."
+        )
+    if mode is Mode.PREVIOUS:
+        return (
+            "- The retrieved passages are from an older (no longer current) version of the document. "
+            "Note this in your answer so the user knows they are reading about a superseded version."
+        )
+    # Mode.ALL — comparison
+    return (
+        "- The passages may come from different versions of the same document; each heading names its "
+        "version. Say which version each statement comes from and never merge two versions into one. When "
+        "asked to compare, set out what each version says and then what differs."
+    )
+
+
+def fetch_final_prompt(all_results, question, catalog_names="", standalone_question="", language="", user_context=None, version_scope=None):
     """
     Constructs the final response prompt using retrieved context and the user query.
 
@@ -28,8 +58,8 @@ def fetch_final_prompt(all_results, question, catalog_names="", standalone_quest
       query" alone was occasionally read as licence to answer in another one.
     - catalog_names, when given, lets a refusal also say what the knowledge base
       does cover.
-    - compare_versions: the question reached older versions of a document, so the passage headings name the
-      version each comes from and the answer must keep them apart.
+    - version_scope: which versions the question asked for (app.logic.versions.VersionScope). Controls
+      both the version labels shown in passage headings and the instruction added to the prompt.
     - user_context (user_context.user_context) tells the model who is asking, as a fenced
       <user_profile> block. Left out, nothing about the user is in the prompt.
     """
@@ -72,13 +102,7 @@ def fetch_final_prompt(all_results, question, catalog_names="", standalone_quest
         "numbers shown in the context. Do not write a list of sources or a \"Cited:\" section, "
         "and do not put a marker on text that used no context."
     )
-    version_line = ""
-    if compare_versions:
-        version_line = (
-            "- The passages may come from different versions of the same document; each heading names its "
-            "version. Say which version each statement comes from and never merge two versions into one. When "
-            "asked to compare, set out what each version says and then what differs."
-        )
+    version_line = _version_instruction(version_scope)
     language_line = (
         "- Answer in the same language as the query below, regardless of what language "
         "the context is written in. Translate or paraphrase context content as needed to "
@@ -97,7 +121,7 @@ def fetch_final_prompt(all_results, question, catalog_names="", standalone_quest
     response_prompt = f"""
     {intro_line}
     <context>
-        {_format_context(all_results, compare_versions)}
+        {_format_context(all_results, show_versions=version_scope is not None and version_scope.wants_older_versions)}
     </context>
 {profile_block}
     When answering to user:

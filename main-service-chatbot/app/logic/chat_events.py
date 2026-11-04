@@ -25,13 +25,19 @@ def sources_event(sources: list) -> dict:
 def result_event(
     response: str, collections: list, sources: list, timings: dict, intent: str | None = None,
     passages: dict | None = None, trace: dict | None = None, no_evidence: bool = False,
+    version_scope=None,
 ) -> dict:
     """The turn's outcome, emitted exactly once, last."""
+    version_mode = version_token = None
+    if version_scope is not None and version_scope.wants_older_versions:
+        version_mode = str(version_scope.mode)
+        version_token = version_scope.token
     return {
         "type": "result",
         "result": ChatResult(
             response=response, collections=collections, sources=sources, timings=timings, intent=intent,
             passages=passages or {}, trace=trace or {}, no_evidence=no_evidence,
+            version_mode=version_mode, version_token=version_token,
         ),
     }
 
@@ -67,6 +73,7 @@ def finish_timings(result_timings: dict, prep_ms: int, linkify_ms: int, save_ms:
 def done_payload(
     response: str, conversation_id: int, history_id: int | None, collections: list, timings: dict,
     suggested_questions: list[str] | None = None,
+    version_scope=None,
 ) -> dict:
     payload: dict = {
         "response": response, "conversation_id": conversation_id, "history_id": history_id,
@@ -74,6 +81,11 @@ def done_payload(
     }
     if suggested_questions:
         payload["suggested_questions"] = suggested_questions
+    if version_scope is not None and version_scope.wants_older_versions:
+        payload["version_scope"] = {
+            "mode": str(version_scope.mode),
+            "token": version_scope.token,
+        }
     return payload
 
 

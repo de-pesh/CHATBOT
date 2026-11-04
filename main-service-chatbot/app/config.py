@@ -33,6 +33,14 @@ class Settings(BaseSettings):
                     "When False (the default), the hardcoded demo GUIDs are used and existing behaviour "
                     "is preserved - flip this on once the host app supplies real values.",
     )
+    INTERNAL_API_SECRET: SecretStr | None = Field(
+        None,
+        description="When set, every request in DISABLE_AUTH=True + TENANT_CONTEXT_ENABLED=True mode "
+                    "must carry the header X-Internal-Token whose value matches this secret. "
+                    "This closes the header-forgery gap: the platform proxy injects the token, a browser "
+                    "hitting the API directly cannot guess it. Store in a Kubernetes Secret, not this "
+                    "ConfigMap. Leave unset only in pure local dev (TENANT_CONTEXT_ENABLED=False).",
+    )
     DISABLE_AUTH: bool = Field(
         False,
         description="When true, bypasses JWT validation and permission checks on all endpoints, and every "
@@ -158,7 +166,7 @@ class Settings(BaseSettings):
     # --- File Storage ---
     # 'local' is the OpenShift target: a mounted PVC shared with the compute
     # service. 'azure' is what local development still uses.
-    STORAGE_TYPE: Literal["azure", "nextcloud", "local"] = Field("azure", description="File storage service to use")
+    STORAGE_TYPE: Literal["azure", "nextcloud", "local", "quay"] = Field("azure", description="File storage service to use")
 
     # Local / persistent-volume storage (used if STORAGE_TYPE is 'local')
     LOCAL_STORAGE_PATH: str | None = Field(
@@ -191,6 +199,13 @@ class Settings(BaseSettings):
     NEXTCLOUD_URL: str | None = Field(None, description="Nextcloud instance URL")
     NEXTCLOUD_USERNAME: SecretStr | None = Field(None, description="Nextcloud username")
     NEXTCLOUD_PASSWORD: SecretStr | None = Field(None, description="Nextcloud password")
+
+    # Quay OCI registry settings (used if STORAGE_TYPE is 'quay')
+    QUAY_REGISTRY: str | None = Field(None, description="Quay registry hostname, e.g. quay-quay-registry.apps.example.local")
+    QUAY_REPOSITORY: str | None = Field(None, description="Repository path inside the registry, e.g. dda-desc/chatbot-files")
+    QUAY_USERNAME: SecretStr | None = Field(None, description="Quay robot account username")
+    QUAY_PASSWORD: SecretStr | None = Field(None, description="Quay robot account token/password")
+    QUAY_INSECURE: bool = Field(False, description="Skip TLS verification (self-signed registry certs)")
 
     # --- File Upload Settings ---
     ALLOWED_UPLOAD_EXTENSIONS: str = Field(
@@ -436,6 +451,12 @@ class Settings(BaseSettings):
                     "grows with every one, and the tail of a long candidate list is the least likely to "
                     "make RERANK_TOP_K, so it is not worth the model reading it.",
     )
+    RERANK_COMPARE_MIN_PER_VERSION: int = Field(
+        2, ge=1,
+        description="For comparison queries (MODE=ALL): minimum passages from each document version "
+                    "that must reach the LLM reranker, and that must appear in the final answer context. "
+                    "Guards against one version dominating both the shortlist and the reranked result.",
+    )
     RERANK_PASSAGE_CHARS: int = Field(
         600,
         description="How much of each candidate passage's text is shown to the rerank call. The rerank "
@@ -621,6 +642,13 @@ class Settings(BaseSettings):
         "_kb_catalog/catalog.json",
         description="Path of the catalog file inside the file store (STORAGE_TYPE). Change it only to "
                     "keep two deployments that share one store from sharing a catalog.",
+    )
+    CHATBOT_BASE_URL: str | None = Field(
+        None,
+        description="Public base URL of this service (e.g. https://chatbot-api.apps.example.com). "
+                    "When set, citation markers in answers link to GET /files/download-by-name on this "
+                    "service rather than directly to the storage backend, which is required for storage "
+                    "backends that have no public URL (Quay/OCI, local PVC).",
     )
     CITATION_LINK_STYLE: str = Field(
         "color:#eed202",

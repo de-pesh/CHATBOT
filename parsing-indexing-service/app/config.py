@@ -26,7 +26,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     # --- File storage ---
     # 'local' is the OpenShift target: a mounted PVC shared with main-service.
-    STORAGE_TYPE: Literal["local", "azure"] = "azure"
+    STORAGE_TYPE: Literal["local", "azure", "quay"] = "azure"
 
     # Used if STORAGE_TYPE is 'local'.
     LOCAL_STORAGE_PATH: str | None = None
@@ -47,6 +47,13 @@ class Settings(BaseSettings):
     # Azure credentials once it is running on a persistent volume.
     BLOB_CONNECTION_STRING: SecretStr | None = None
     BLOB_CONTAINER_NAME: str | None = None
+
+    # Used if STORAGE_TYPE is 'quay'.
+    QUAY_REGISTRY: str | None = None
+    QUAY_REPOSITORY: str | None = None
+    QUAY_USERNAME: SecretStr | None = None
+    QUAY_PASSWORD: SecretStr | None = None
+    QUAY_INSECURE: bool = False
 
     # --- Vector store ---
     VECTOR_STORE: Literal["mongo", "qdrant"] = "mongo"

@@ -1,9 +1,11 @@
 """Dedupe before the rerank call, and mapping its reply back onto the candidates."""
 from app.logic.rerank import (
+    balance_versions,
     dedupe_candidates,
     fuse_query_hits,
     reorder_by_ids,
     rerank_short_id,
+    rerank_shortlist_balanced,
 )
 
 
@@ -90,3 +92,53 @@ def test_fusing_does_not_change_the_hits_it_was_given():
     a, b = _hit(1, 0.9), _hit(1, 0.4)
     fuse_query_hits([[a], [b]], k=10)
     assert a["score"] == 0.9 and b["score"] == 0.4
+
+
+# ------------------------------------------------------------------ version-aware reranking
+
+def _versioned_hit(i, version_no, score=0.5, doc_key="policy"):
+    return {
+        "id": f"{i:08d}-aaaa-bbbb-cccc-dddddddddddd",
+        "score": score,
+        "metadata": {"textContent": f"t{i}", "document_key": doc_key, "version_no": version_no},
+    }
+
+
+def test_balanced_shortlist_ensures_each_version_gets_minimum_slots():
+    # 8 v5 chunks scoring higher than 2 v4 chunks
+    v5 = [_versioned_hit(i, 5, score=0.9 - i * 0.01) for i in range(8)]
+    v4 = [_versioned_hit(100 + i, 4, score=0.1) for i in range(2)]
+    result = rerank_shortlist_balanced(v5 + v4, max_candidates=6, min_per_group=2)
+    versions_in = {h["metadata"]["version_no"] for h in result}
+    assert versions_in == {4, 5}, "both versions must reach the shortlist"
+    assert len(result) == 6
+
+
+def test_balanced_shortlist_without_version_info_behaves_like_normal_shortlist():
+    # Chunks with no version metadata — all in the same "latest" group
+    hits = [_hit(i, score=1.0 - i * 0.1) for i in range(10)]
+    result = rerank_shortlist_balanced(hits, max_candidates=5, min_per_group=2)
+    assert len(result) == 5
+
+
+def test_balance_versions_tops_up_an_under_represented_version():
+    # Reranker returned 4 v5 chunks but dropped all v4
+    reranked = [_versioned_hit(i, 5, score=0.9) for i in range(4)]
+    all_candidates = reranked + [_versioned_hit(100 + i, 4, score=0.5) for i in range(3)]
+    result = balance_versions(reranked, all_candidates, top_k=6, min_per_group=2)
+    versions_in = {h["metadata"]["version_no"] for h in result}
+    assert versions_in == {4, 5}, "v4 should be topped up"
+    assert len(result) == 6
+
+
+def test_balance_versions_does_not_exceed_top_k():
+    reranked = [_versioned_hit(i, 5, score=0.9) for i in range(5)]
+    all_candidates = reranked + [_versioned_hit(100, 4, score=0.1)]
+    result = balance_versions(reranked, all_candidates, top_k=5, min_per_group=2)
+    assert len(result) == 5
+
+
+def test_balance_versions_is_a_noop_when_all_versions_are_already_represented():
+    reranked = [_versioned_hit(i, 5 if i < 3 else 4, score=0.9) for i in range(5)]
+    result = balance_versions(reranked, reranked, top_k=8, min_per_group=2)
+    assert result == reranked

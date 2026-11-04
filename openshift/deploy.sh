@@ -5,7 +5,7 @@
 #   ./openshift/build-push.sh v1        # on a machine with docker (once per release)
 #   ./openshift/deploy.sh v1            # on a machine with oc
 #
-# Usage: deploy.sh <image-tag> [namespace]     (namespace defaults to ai-common)
+# Usage: deploy.sh <image-tag> [namespace]     (namespace defaults to ai-dca)
 # Re-running is safe; to roll out a new release, build-push a new tag and run deploy.sh with it.
 set -euo pipefail
 
@@ -17,7 +17,7 @@ command -v oc >/dev/null || { echo "oc is not installed on this machine."; exit 
 oc whoami >/dev/null 2>&1 || { echo "Not logged in: run  oc login <api-url>  first."; exit 1; }
 
 # Refuse to deploy with a value still to fill in. <TAG> is filled in below; comments are ignored.
-LEFT=$(grep -nE '<[A-Z][A-Z0-9_]*>' 01-secrets.yaml 02-configmap.yaml 03-pvc.yaml 08-routes.yaml 11-networkpolicy.yaml \
+LEFT=$(grep -nE '<[A-Z][A-Z0-9_]*>' 01-secrets.yaml 02-configmap.yaml 08-routes.yaml 11-networkpolicy.yaml \
         | grep -vE '^[^:]*:[0-9]+: *#' || true)
 if [ -n "$LEFT" ]; then
   echo "These values are still placeholders - fill them in, then run again:"
@@ -36,7 +36,14 @@ fi
 apply() { sed "s|<TAG>|$TAG|g" "$1" | oc apply -n "$NS" -f - ; }
 
 # Storage, config and secrets first; then the pods the others call; then the public routes; the network rules last.
-for f in 03-pvc.yaml 01-secrets.yaml 02-configmap.yaml 07-services.yaml \
+# Skip the PVC when STORAGE_TYPE=quay (no shared volume needed).
+if grep -qE 'STORAGE_TYPE:\s*"local"' 02-configmap.yaml; then
+  echo "--> 03-pvc.yaml"
+  apply "03-pvc.yaml"
+else
+  echo "--> skipping 03-pvc.yaml (STORAGE_TYPE != local)"
+fi
+for f in 01-secrets.yaml 02-configmap.yaml 07-services.yaml \
          05-deployment-parsing-indexing-service.yaml \
          05b-deployment-kb-worker.yaml \
          04-deployment-main-service.yaml \

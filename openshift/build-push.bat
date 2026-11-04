@@ -47,7 +47,7 @@ echo ==^> %REGISTRY%/chatbot-main-service:%TAG%
 SET BARGS=--build-arg BASE_REGISTRY=%BASE_REGISTRY%
 IF NOT "%PIP_INDEX_URL%"==""    SET BARGS=%BARGS% --build-arg PIP_INDEX_URL=%PIP_INDEX_URL%
 IF NOT "%PIP_TRUSTED_HOST%"=="" SET BARGS=%BARGS% --build-arg PIP_TRUSTED_HOST=%PIP_TRUSTED_HOST%
-docker build --platform linux/amd64 -t %REGISTRY%/chatbot-main-service:%TAG% %BARGS% main-service-chatbot
+docker build --no-cache --platform linux/amd64 -t %REGISTRY%/chatbot-main-service:%TAG% %BARGS% main-service-chatbot
 IF ERRORLEVEL 1 ( echo BUILD FAILED: chatbot-main-service & exit /b 1 )
 docker push %REGISTRY%/chatbot-main-service:%TAG%
 IF ERRORLEVEL 1 ( echo PUSH FAILED: chatbot-main-service & exit /b 1 )
@@ -60,7 +60,7 @@ echo ==^> %REGISTRY%/chatbot-parsing-indexing-service:%TAG%
 SET BARGS=--build-arg BASE_REGISTRY=%BASE_REGISTRY% --build-arg EPEL_RPM_URL=%EPEL_RPM_URL% --build-arg EMBEDDING_MODE=remote --build-arg OCR_MODE=optional
 IF NOT "%PIP_INDEX_URL%"==""    SET BARGS=%BARGS% --build-arg PIP_INDEX_URL=%PIP_INDEX_URL%
 IF NOT "%PIP_TRUSTED_HOST%"=="" SET BARGS=%BARGS% --build-arg PIP_TRUSTED_HOST=%PIP_TRUSTED_HOST%
-docker build --platform linux/amd64 -t %REGISTRY%/chatbot-parsing-indexing-service:%TAG% %BARGS% parsing-indexing-service
+docker build --no-cache --platform linux/amd64 -t %REGISTRY%/chatbot-parsing-indexing-service:%TAG% %BARGS% parsing-indexing-service
 IF ERRORLEVEL 1 ( echo BUILD FAILED: chatbot-parsing-indexing-service & exit /b 1 )
 docker push %REGISTRY%/chatbot-parsing-indexing-service:%TAG%
 IF ERRORLEVEL 1 ( echo PUSH FAILED: chatbot-parsing-indexing-service & exit /b 1 )
@@ -74,7 +74,7 @@ SET BARGS=--build-arg BASE_REGISTRY=%BASE_REGISTRY% --build-arg BUILD_SCRIPT=bui
 IF NOT "%NODE_IMAGE%"==""   SET BARGS=%BARGS% --build-arg NODE_IMAGE=%NODE_IMAGE%
 IF NOT "%NGINX_IMAGE%"==""  SET BARGS=%BARGS% --build-arg NGINX_IMAGE=%NGINX_IMAGE%
 IF NOT "%NPM_REGISTRY%"=="" SET BARGS=%BARGS% --build-arg NPM_REGISTRY=%NPM_REGISTRY%
-docker build --platform linux/amd64 -t %REGISTRY%/chatbot-frontend:%TAG% %BARGS% FE
+docker build --no-cache --platform linux/amd64 -t %REGISTRY%/chatbot-frontend:%TAG% %BARGS% FE
 IF ERRORLEVEL 1 ( echo BUILD FAILED: chatbot-frontend & exit /b 1 )
 docker push %REGISTRY%/chatbot-frontend:%TAG%
 IF ERRORLEVEL 1 ( echo PUSH FAILED: chatbot-frontend & exit /b 1 )
@@ -93,5 +93,5 @@ IF ERRORLEVEL 1 ( echo PUSH FAILED: tika & exit /b 1 )
 
 echo.
 echo Pushed tag %TAG%.
-echo Next:  oc login ^<api-url^>  then  openshift\deploy.ps1 %TAG%
+echo Next:  oc login ^<api-url^>  then  openshift\deploy.bat %TAG%
 endlocal

@@ -1,8 +1,11 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AI Chat</title>
-<meta name="claude:viewport-fit-sides" content="cover">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
-
 <style>
 /* ── tokens ── */
 :root {
@@ -21,6 +24,7 @@
   --dim:        #9aabbd;
   --danger:     #c0392b;
   --warn:       #b45309;
+  --success:    #166534;
   --f:          'Inter', system-ui, sans-serif;
   color-scheme: light;
 }
@@ -30,7 +34,7 @@
     --border:    #2a3e5c; --accent:   #5b8ec5; --accent2:  #4878ae;
     --accent-lt: #152236; --user-bg:  #374357; --user-fg:  #e8edf5;
     --bot-fg:    #c8d8f0; --fg:       #d8e8f8; --muted:    #7d96b4;
-    --dim:       #4d6580; --danger:   #f87171; --warn:     #fb923c;
+    --dim:       #4d6580; --danger:   #f87171; --warn:     #fb923c; --success: #4ade80;
     color-scheme: dark;
   }
 }
@@ -39,7 +43,7 @@
   --border:    #2a3e5c; --accent:   #5b8ec5; --accent2:  #4878ae;
   --accent-lt: #152236; --user-bg:  #374357; --user-fg:  #e8edf5;
   --bot-fg:    #c8d8f0; --fg:       #d8e8f8; --muted:    #7d96b4;
-  --dim:       #4d6580; --danger:   #f87171; --warn:     #fb923c;
+  --dim:       #4d6580; --danger:   #f87171; --warn:     #fb923c; --success: #4ade80;
   color-scheme: dark;
 }
 
@@ -94,6 +98,25 @@ body{
 .icon-btn:disabled:hover{background:transparent;}
 .icon-btn svg{pointer-events:none;}
 
+/* user identity badge in header */
+#identity-badge{
+  display:flex;align-items:center;gap:5px;
+  font-size:.75rem;color:var(--muted);
+  padding:3px 8px;border-radius:12px;
+  border:1px solid var(--border);background:var(--surface);
+  cursor:pointer;transition:border-color .15s;max-width:180px;
+  overflow:hidden;
+}
+#identity-badge:hover{border-color:var(--accent);color:var(--accent);}
+#identity-badge span{
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+#identity-badge .dot{
+  width:7px;height:7px;border-radius:50%;
+  flex-shrink:0;background:var(--success);
+}
+#identity-badge .dot.unset{background:var(--warn);}
+
 /* ── panels ── */
 #chat-panel{
   flex:1;min-height:0;overflow-y:auto;
@@ -145,6 +168,17 @@ body{
 .bubble strong{font-weight:600;}
 .bubble blockquote{border-left:3px solid var(--accent);margin:.5em 0;padding-left:.8em;color:var(--muted);}
 
+/* citation links — styled to look like pill badges */
+.bubble a[data-citation]{
+  display:inline-flex;align-items:center;gap:3px;
+  font-size:.8em;padding:1px 7px;border-radius:10px;
+  background:var(--accent-lt);border:1px solid var(--border);
+  color:var(--accent);text-decoration:none;
+  cursor:pointer;transition:background .12s;
+}
+.bubble a[data-citation]:hover{background:var(--border);}
+.bubble a[data-citation] svg{flex-shrink:0;}
+
 /* ── feedback ── */
 .fb-row{display:flex;align-items:center;gap:2px;margin-top:6px;}
 .fb-btn{
@@ -191,7 +225,7 @@ body{
   padding:4px max(16px,env(safe-area-inset-right,0px)) 6px max(16px,env(safe-area-inset-left,0px));
   flex-shrink:0;
 }
-#suggestions.has-chips{display:flex;}
+#suggestions.has-chips{display:none;}
 .chip{
   font-family:var(--f);font-size:.75rem;padding:5px 12px;
   border-radius:20px;border:1px solid var(--border);
@@ -242,32 +276,41 @@ body{
 .hist-item-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.88rem;}
 .hist-item-date{font-size:.75rem;color:var(--muted);}
 
-/* ── auth gate ── */
-#auth-gate{
-  position:absolute;inset:0;background:var(--bg);
+/* ── overlays (auth gate + identity gate share the same shell) ── */
+.overlay{
+  position:absolute;inset:0;background:rgba(13,25,41,.6);backdrop-filter:blur(4px);
   display:none;align-items:center;justify-content:center;z-index:100;
 }
-#auth-gate.on{display:flex;}
-.auth-card{
-  background:var(--surface);border:1px solid var(--border);border-radius:12px;
-  padding:32px 28px;width:100%;max-width:360px;
+.overlay.on{display:flex;}
+.modal-card{
+  background:var(--surface);border:1px solid var(--border);border-radius:14px;
+  padding:30px 28px;width:100%;max-width:400px;
   display:flex;flex-direction:column;gap:14px;
-  margin:0 16px;
+  margin:0 16px;box-shadow:0 8px 32px rgba(0,0,0,.18);
 }
-.auth-card h2{font-size:1.1rem;font-weight:600;text-align:center;margin:0;}
-.auth-card p{font-size:.83rem;color:var(--muted);text-align:center;margin:0;}
-.auth-card input{
+.modal-card h2{font-size:1.1rem;font-weight:600;text-align:center;margin:0;}
+.modal-card p{font-size:.83rem;color:var(--muted);text-align:center;margin:0;}
+.modal-card label{font-size:.82rem;font-weight:500;color:var(--muted);margin-bottom:2px;display:block;}
+.field-group{display:flex;flex-direction:column;gap:4px;}
+.modal-card input, .modal-card select{
   padding:9px 12px;border:1px solid var(--border);border-radius:7px;
   font-family:var(--f);font-size:.9rem;background:var(--surface);color:var(--fg);
 }
-.auth-card input:focus{outline:2px solid var(--accent);border-color:transparent;}
-.auth-submit{
+.modal-card input:focus, .modal-card select:focus{outline:2px solid var(--accent);border-color:transparent;}
+.modal-card input[type="checkbox"]{
+  width:16px;height:16px;padding:0;cursor:pointer;accent-color:var(--accent);
+}
+.check-row{display:flex;align-items:center;gap:8px;}
+.check-row label{margin:0;cursor:pointer;}
+.modal-submit{
   padding:9px;background:var(--accent);color:#fff;border:none;
   border-radius:7px;font-family:var(--f);font-size:.9rem;font-weight:500;cursor:pointer;
 }
-.auth-submit:hover{background:var(--accent2);}
-.auth-submit:disabled{background:var(--dim);cursor:default;}
-.auth-err{color:var(--danger);font-size:.82rem;text-align:center;}
+.modal-submit:hover{background:var(--accent2);}
+.modal-submit:disabled{background:var(--dim);cursor:default;}
+.modal-err{color:var(--danger);font-size:.82rem;text-align:center;}
+.modal-divider{height:1px;background:var(--border);margin:0 -4px;}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
 
 /* ── export menu ── */
 #export-menu{
@@ -298,20 +341,68 @@ body{
 ::-webkit-scrollbar-track{background:transparent;}
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
 </style>
-
+</head>
+<body>
 <!-- ═══ MARKUP ════════════════════════════════════════════════════════════════ -->
 
 <div id="app">
 
-  <!-- auth gate -->
-  <div id="auth-gate">
-    <div class="auth-card">
+  <!-- ── auth gate (JWT login) ── -->
+  <div id="auth-gate" class="overlay">
+    <div class="modal-card">
       <h2>Sign in</h2>
       <p>Enter your credentials to continue</p>
       <input id="auth-email" type="email" placeholder="Email" autocomplete="email">
       <input id="auth-password" type="password" placeholder="Password" autocomplete="current-password">
-      <button class="auth-submit" id="auth-btn">Sign in</button>
-      <div class="auth-err" id="auth-err" hidden></div>
+      <button class="modal-submit" id="auth-btn">Sign in</button>
+      <div class="modal-err" id="auth-err" hidden></div>
+    </div>
+  </div>
+
+  <!-- ── identity gate (platform user context) ── -->
+  <div id="identity-gate" class="overlay">
+    <div class="modal-card">
+      <h2>Who are you?</h2>
+      <p>Set your user context. These are sent as headers on every request to isolate your sessions from other users.</p>
+
+      <div class="field-group">
+        <label for="id-user-id">User ID <span style="color:var(--danger)">*</span></label>
+        <input id="id-user-id" type="text" placeholder="e.g. a1b2c3d4-…" autocomplete="off">
+      </div>
+
+      <div class="row2">
+        <div class="field-group">
+          <label for="id-entity-id">Entity ID</label>
+          <input id="id-entity-id" type="text" placeholder="optional GUID" autocomplete="off">
+        </div>
+        <div class="field-group">
+          <label for="id-tenant-id">Tenant ID</label>
+          <input id="id-tenant-id" type="text" placeholder="optional GUID" autocomplete="off">
+        </div>
+      </div>
+
+      <div class="field-group">
+        <label for="id-user-type">User Type</label>
+        <select id="id-user-type">
+          <option value="user">user</option>
+          <option value="admin">admin</option>
+          <option value="demo_user">demo_user</option>
+        </select>
+      </div>
+
+      <div class="check-row">
+        <input id="id-is-admin" type="checkbox">
+        <label for="id-is-admin">Is admin (grants access to file management routes)</label>
+      </div>
+
+      <div class="field-group">
+        <label for="id-internal-token">Internal Token <span style="color:var(--danger)">*</span></label>
+        <input id="id-internal-token" type="text" placeholder="X-Internal-Token value (from 01-secrets.yaml)" autocomplete="off">
+        <small style="color:var(--muted,#888);font-size:0.78rem">Must match INTERNAL_API_SECRET in the cluster secret.</small>
+      </div>
+
+      <button class="modal-submit" id="identity-btn">Save &amp; Continue</button>
+      <div class="modal-err" id="identity-err" hidden></div>
     </div>
   </div>
 
@@ -333,6 +424,11 @@ body{
       <button class="tab-btn active" id="tab-chat-btn">AI Chat</button>
     </div>
     <div class="hdr-r">
+      <!-- identity badge (click to re-open identity dialog) -->
+      <div id="identity-badge" title="Click to change user identity">
+        <span class="dot unset" id="identity-dot"></span>
+        <span id="identity-label">No identity</span>
+      </div>
       <!-- timer -->
       <button class="icon-btn dim" id="btn-timer" title="Show answer times">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2"/><path d="M5 3 3 5"/><path d="M19 3l2 2"/></svg>
@@ -386,7 +482,7 @@ body{
 <!-- ═══ SCRIPT ════════════════════════════════════════════════════════════════ -->
 <script>
 // ── CONFIG ── change BASE_URL to your API's origin if it differs from this page ──
-const BASE_URL = "";  // e.g. "http://chatbot-api.apps.dda-desc-az1-01.desccii.local"
+const BASE_URL = "http://chatbot-api.apps.dda-desc-az1-01.desccii.local";
 const ROUTES = {
   chat:     `${BASE_URL}/chat`,
   stream:   `${BASE_URL}/chat/stream`,
@@ -402,33 +498,42 @@ const MAX_HISTORY = 10;
 const GROUNDING_DELAY_MS = 6000;
 
 // ── state ──────────────────────────────────────────────────────────────────
-let messages       = [];        // { sender, text, timing?, historyId? }
+let messages       = [];
 let conversationId = null;
 let isStreaming    = false;
 let showTimings    = loadPref("showTimings", false);
 let token          = loadPref("authToken", null);
 let userName       = loadPref("user", null);
 let activeTab      = "chat";
-let feedbackState  = {};        // historyId -> { rating, comment }
-let groundingState = {};        // historyId -> { verdict, detail }
+let feedbackState  = {};
+let groundingState = {};
 let commentBoxFor  = null;
 let histSessions   = [];
 let suggestions    = [];
 
 // ── elements ───────────────────────────────────────────────────────────────
-const $chat      = document.getElementById("chat-panel");
-const $hist      = document.getElementById("history-panel");
-const $status    = document.getElementById("status");
-const $sugg      = document.getElementById("suggestions");
-const $input     = document.getElementById("msg-input");
-const $sendBtn   = document.getElementById("send-btn");
-const $authGate  = document.getElementById("auth-gate");
-const $authEmail = document.getElementById("auth-email");
-const $authPass  = document.getElementById("auth-password");
-const $authBtn   = document.getElementById("auth-btn");
-const $authErr   = document.getElementById("auth-err");
-const $toast     = document.getElementById("toast");
-const $exportMenu= document.getElementById("export-menu");
+const $chat        = document.getElementById("chat-panel");
+const $hist        = document.getElementById("history-panel");
+const $status      = document.getElementById("status");
+const $sugg        = document.getElementById("suggestions");
+const $input       = document.getElementById("msg-input");
+const $sendBtn     = document.getElementById("send-btn");
+const $authGate    = document.getElementById("auth-gate");
+const $authEmail   = document.getElementById("auth-email");
+const $authPass    = document.getElementById("auth-password");
+const $authBtn     = document.getElementById("auth-btn");
+const $authErr     = document.getElementById("auth-err");
+const $identityGate= document.getElementById("identity-gate");
+const $idUserId    = document.getElementById("id-user-id");
+const $idEntityId      = document.getElementById("id-entity-id");
+const $idInternalToken = document.getElementById("id-internal-token");
+const $idTenantId  = document.getElementById("id-tenant-id");
+const $idUserType  = document.getElementById("id-user-type");
+const $idIsAdmin   = document.getElementById("id-is-admin");
+const $identityBtn = document.getElementById("identity-btn");
+const $identityErr = document.getElementById("identity-err");
+const $toast       = document.getElementById("toast");
+const $exportMenu  = document.getElementById("export-menu");
 
 // ── helpers ────────────────────────────────────────────────────────────────
 function loadPref(k, def) {
@@ -439,9 +544,100 @@ function savePref(k, v) {
   try { localStorage.setItem("chatbot." + k, JSON.stringify(v)); } catch {}
 }
 
-function authHeaders() {
-  return token ? { Authorization: `Bearer ${token}` } : {};
+// ── user identity (tenant context headers) ─────────────────────────────────
+function loadIdentity() {
+  return loadPref("identity", null);
 }
+function saveIdentity(id) {
+  savePref("identity", id);
+  updateIdentityBadge(id);
+}
+
+function tenantHeaders() {
+  const id = loadIdentity();
+  if (!id || !id.user_id) return {};
+  const h = {
+    "x-user-id":   id.user_id,
+    "x-user-type": id.user_type || "user",
+    "x-is-admin":  String(id.is_admin === true ? "true" : "false"),
+  };
+  if (id.entity_id) h["x-entity-id"] = id.entity_id;
+  if (id.tenant_id) h["x-tenant-id"] = id.tenant_id;
+  if (id.internal_token) h["x-internal-token"] = id.internal_token;
+  return h;
+}
+
+function authHeaders() {
+  const h = { ...tenantHeaders() };
+  if (token) h["Authorization"] = `Bearer ${token}`;
+  return h;
+}
+
+function updateIdentityBadge(id) {
+  const dot   = document.getElementById("identity-dot");
+  const label = document.getElementById("identity-label");
+  if (!id || !id.user_id) {
+    dot.className   = "dot unset";
+    label.textContent = "No identity";
+  } else {
+    dot.className   = "dot";
+    // Show truncated user_id for recognition
+    const short = id.user_id.length > 12 ? id.user_id.slice(0, 8) + "…" : id.user_id;
+    label.textContent = short;
+  }
+}
+
+function showIdentityGate(visible) {
+  $identityGate.classList.toggle("on", visible);
+  if (visible) {
+    const id = loadIdentity();
+    if (id) {
+      $idUserId.value    = id.user_id    || "";
+      $idEntityId.value      = id.entity_id      || "";
+      $idTenantId.value      = id.tenant_id      || "";
+      $idUserType.value      = id.user_type       || "user";
+      $idIsAdmin.checked     = !!id.is_admin;
+      $idInternalToken.value = id.internal_token  || "";
+    }
+    $idUserId.focus();
+  }
+}
+
+function setIdentityError(msg) {
+  $identityErr.textContent = msg;
+  $identityErr.hidden = !msg;
+}
+
+$identityBtn.addEventListener("click", () => {
+  const userId = $idUserId.value.trim();
+  if (!userId) { setIdentityError("User ID is required."); return; }
+  const id = {
+    user_id:        userId,
+    entity_id:      $idEntityId.value.trim()      || "",
+    tenant_id:      $idTenantId.value.trim()      || "",
+    user_type:      $idUserType.value              || "user",
+    is_admin:       $idIsAdmin.checked,
+    internal_token: $idInternalToken.value.trim() || "",
+  };
+  saveIdentity(id);
+  showIdentityGate(false);
+  setIdentityError("");
+  showToast("Identity saved.");
+});
+
+$idUserId.addEventListener("keydown", e => { if (e.key === "Enter") $identityBtn.click(); });
+
+document.getElementById("identity-badge").addEventListener("click", () => showIdentityGate(true));
+
+// ── initial identity check ──────────────────────────────────────────────────
+(function checkIdentityOnLoad() {
+  const id = loadIdentity();
+  updateIdentityBadge(id);
+  // Show the gate on first launch (no user_id set and no JWT token)
+  if (!id?.user_id && !token) {
+    showIdentityGate(true);
+  }
+})();
 
 let toastTimer;
 function showToast(msg) {
@@ -488,6 +684,55 @@ function stageText(stage) {
   return map[stage] || "Thinking…";
 }
 
+// ── citation link interception ─────────────────────────────────────────────
+// Citation links that point back to the API need auth headers injected.
+// A plain browser navigation (window.open / anchor click) cannot carry custom
+// headers, so we fetch() the download with headers and hand the blob to the
+// browser's download mechanism instead.
+function isSameOriginLink(href) {
+  if (!href) return false;
+  try {
+    const url = new URL(href, window.location.href);
+    const base = new URL(BASE_URL);
+    return url.hostname === base.hostname;
+  } catch { return false; }
+}
+
+$chat.addEventListener("click", async (e) => {
+  const anchor = e.target.closest("a");
+  if (!anchor) return;
+  const href = anchor.getAttribute("href");
+  if (!href) return;
+
+  // Let external (pre-signed storage) links open normally in a new tab.
+  if (!isSameOriginLink(href)) return;
+
+  // This is an API link (e.g. /files/download-by-name) — fetch with headers.
+  e.preventDefault();
+  const fileName = anchor.title || anchor.textContent.trim() || "download";
+  showToast("Downloading…");
+  try {
+    const res = await fetch(href, { headers: authHeaders() });
+    if (res.status === 401) { handleUnauthorized(); return; }
+    if (!res.ok) { showToast(`Download failed (${res.status}).`); return; }
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    // Try to derive a filename: Content-Disposition > link title > anchor text
+    const cd = res.headers.get("content-disposition") || "";
+    const cdMatch = cd.match(/filename\*?=(?:UTF-8'')?["']?([^"';\r\n]+)/i);
+    a.download = cdMatch ? decodeURIComponent(cdMatch[1].trim()) : fileName;
+    a.href = url;
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    showToast("Download started.");
+  } catch {
+    showToast("Download failed — check your connection.");
+  }
+});
+
 // ── render ─────────────────────────────────────────────────────────────────
 function renderAll() {
   $chat.innerHTML = "";
@@ -522,6 +767,29 @@ function renderMessage(idx) {
   $chat.append(row);
 }
 
+// Post-process citation anchors rendered by the backend: mark them with
+// data-citation so the CSS pill style applies, and add a download icon.
+function decorateCitations(bubble) {
+  bubble.querySelectorAll("a[target='_blank']").forEach(a => {
+    const href = a.getAttribute("href") || "";
+    // Only mark links that go to the API download endpoint or storage.
+    if (!href.startsWith("javascript") && href.length > 1) {
+      a.setAttribute("data-citation", "1");
+      // Prepend a small download/document icon if not already there
+      if (!a.querySelector("svg")) {
+        const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        icon.setAttribute("width", "10"); icon.setAttribute("height", "10");
+        icon.setAttribute("viewBox", "0 0 24 24");
+        icon.setAttribute("fill", "none");
+        icon.setAttribute("stroke", "currentColor");
+        icon.setAttribute("stroke-width", "2");
+        icon.innerHTML = '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>';
+        a.prepend(icon);
+      }
+    }
+  });
+}
+
 function updateBubble(el, msg) {
   const bubble = el.classList.contains("bubble") ? el : el.querySelector(".bubble");
   if (!bubble) return;
@@ -530,6 +798,7 @@ function updateBubble(el, msg) {
 
   if (msg.sender === "bot" || msg.sender === "assistant") {
     bubble.innerHTML = marked_html(msg.text || "");
+    decorateCitations(bubble);
     const fbRow = renderFeedback(msg, idx);
     if (fbRow) bubble.append(fbRow);
     if (showTimings && msg.timing) {
@@ -553,14 +822,12 @@ function renderFeedback(msg, idx) {
   row.className = "fb-row";
   row.dataset.fbId = id;
 
-  // thumbs up
   const up = document.createElement("button");
   up.className = "fb-btn" + (fb?.rating === "positive" ? " good" : "");
   up.title = "Good response";
   up.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="${fb?.rating==="positive"?"currentColor":"none"}" stroke="currentColor" stroke-width="2"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3H14z"/><path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>`;
   up.addEventListener("click", () => submitFeedback(id, "positive"));
 
-  // thumbs down
   const dn = document.createElement("button");
   dn.className = "fb-btn" + (fb?.rating === "negative" ? " bad" : "");
   dn.title = "Bad response";
@@ -581,7 +848,6 @@ function renderFeedback(msg, idx) {
     row.append(warn);
   }
 
-  // comment box
   if (commentBoxFor === id) {
     const cRow = document.createElement("div");
     cRow.className = "comment-row";
@@ -596,8 +862,6 @@ function renderFeedback(msg, idx) {
     xBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
     xBtn.addEventListener("click", () => { commentBoxFor = null; refreshMessages(); });
     cRow.append(inp, okBtn, xBtn);
-    row.after(cRow); // will be appended to bubble below
-    // Actually return them as a fragment
     const frag = document.createDocumentFragment();
     frag.append(row, cRow);
     return frag;
@@ -607,7 +871,6 @@ function renderFeedback(msg, idx) {
 }
 
 function refreshMessages() {
-  // Re-render bot bubbles that have feedback (keep user bubbles intact)
   for (let i = 0; i < messages.length; i++) {
     const msg = messages[i];
     if ((msg.sender === "bot" || msg.sender === "assistant") && msg.historyId) {
@@ -671,12 +934,20 @@ function handleUnauthorized() {
   showAuthGate(true);
 }
 
-// Check auth on load (GET /chat/me → 401 means login required, 503 = auth disabled)
+// Check auth on load.
+// - 200 → already authenticated, grab username.
+// - 401 + JWT token present → token expired, show login gate.
+// - 401 + no JWT token   → DISABLE_AUTH mode, bad/missing identity headers; show identity gate.
+// - 503 / network error  → service unreachable, identity gate still handles isolation.
 (async () => {
   if (!ROUTES.me) return;
   try {
     const res = await fetch(ROUTES.me, { headers: authHeaders() });
-    if (res.status === 401) showAuthGate(true);
+    if (res.status === 401) {
+      if (token) showAuthGate(true);       // JWT expired — re-login
+      else       showIdentityGate(true);   // embedded mode — fix identity/token
+      return;
+    }
     if (res.status === 200) {
       try {
         const d = await res.json();
@@ -760,13 +1031,11 @@ async function handleSend(overrideText) {
   updateSendBtn();
   document.getElementById("btn-export").disabled = false;
 
-  // Render user message
   renderMessage(messages.length - 1);
   scrollIfStuck();
 
   const payload = {
     conversation_id: conversationId,
-    user_id: userName,
     local_hour: new Date().getHours(),
     chat: [...history, { role: "user", content: text }],
   };
@@ -797,7 +1066,7 @@ async function handleSend(overrideText) {
     };
   }
 
-  setStatus(null, true); // typing dots
+  setStatus(null, true);
 
   try {
     const streamed = await streamChat(ROUTES.stream, payload, {
@@ -829,7 +1098,6 @@ async function handleSend(overrideText) {
     });
 
     if (!streamed) {
-      // Fallback to blocking /chat
       setStatus("Waiting for response…");
       const res = await fetch(ROUTES.chat, {
         method: "POST",
@@ -908,18 +1176,6 @@ function switchTab(tab) {
   document.getElementById("tab-chat-btn").classList.toggle("active", isChat);
 }
 
-async function openHistory() {
-  switchTab("history");
-  try {
-    const res = await fetch(`${ROUTES.sessions}?page_size=100&is_active=true`, { headers: authHeaders() });
-    if (res.status === 401) { handleUnauthorized(); return; }
-    if (!res.ok) return;
-    histSessions = (await res.json())?.data ?? await res.json().catch(() => []);
-    renderHistoryList(histSessions);
-  } catch (err) { console.error("History fetch:", err); }
-}
-
-// The sessions endpoint may return {data:[...]} or just [...]. Handle both.
 async function fetchSessions() {
   const res = await fetch(`${ROUTES.sessions}?page_size=100&is_active=true`, { headers: authHeaders() });
   if (res.status === 401) { handleUnauthorized(); throw new Error("401"); }
@@ -980,7 +1236,6 @@ async function loadSession(id) {
     });
     messages = rebuilt;
 
-    // grounding
     for (const turn of turns) {
       if (turn?.id && turn?.grounding_verdict && turn.grounding_verdict !== "grounded") {
         groundingState[turn.id] = { verdict: turn.grounding_verdict, detail: turn.grounding_detail };
@@ -1057,7 +1312,6 @@ document.getElementById("exp-clipboard").addEventListener("click", () => {
   $exportMenu.classList.remove("on");
   const text = buildExportText();
   navigator.clipboard?.writeText(text).then(() => showToast("Copied to clipboard.")).catch(() => {
-    // fallback: select a textarea
     const ta = document.createElement("textarea");
     ta.value = text;
     ta.style.cssText = "position:fixed;top:-9999px;";
@@ -1140,8 +1394,9 @@ function escHtml(s) {
   return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
 
-// Configure marked for safety
 if (typeof marked !== "undefined") {
   marked.setOptions({ breaks: true, gfm: true });
 }
 </script>
+</body>
+</html>

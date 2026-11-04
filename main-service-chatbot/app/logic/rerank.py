@@ -1,6 +1,72 @@
 """Shaping the passage list around the rerank call: dedupe before it, reorder by its reply."""
 
 
+def _version_group(hit: dict) -> str:
+    """A grouping key that distinguishes v4 chunks from v5 chunks within the same document.
+
+    Used by the comparison helpers below: each group should be represented in the
+    rerank candidate list and in the final answer passages.
+    """
+    meta = hit.get("metadata") or {}
+    doc_key = meta.get("document_key") or ""
+    vno = meta.get("version_no")
+    if vno is not None:
+        return f"{doc_key}:v{int(vno)}"
+    return f"{doc_key}:latest"
+
+
+def rerank_shortlist_balanced(candidates: list, max_candidates: int, min_per_group: int) -> list:
+    """Like rerank_shortlist but guarantees each version group gets at least min_per_group slots.
+
+    Used for ALL-mode (comparison) queries so that the LLM reranker sees passages from every
+    version, not just the highest-scoring one. Without this, a document with many v5 chunks and
+    few v4 chunks would hand the reranker nothing from v4 to compare against.
+    """
+    sorted_all = sorted(candidates, key=lambda c: c.get("score", 0.0), reverse=True)
+    by_group: dict = {}
+    for c in sorted_all:
+        by_group.setdefault(_version_group(c), []).append(c)
+
+    reserved, reserved_keys = [], set()
+    for items in by_group.values():
+        for item in items[:min_per_group]:
+            reserved.append(item)
+            reserved_keys.add(_hit_key(item))
+
+    # Fill the remaining slots with the best-scoring candidates not already reserved
+    extras = [c for c in sorted_all if _hit_key(c) not in reserved_keys]
+    return (reserved + extras)[:max_candidates]
+
+
+def balance_versions(reranked: list, candidates: list, top_k: int, min_per_group: int) -> list:
+    """After the LLM reranker, ensure each version group has at least min_per_group passages.
+
+    If the reranker dropped all passages from one version, the best-scoring unused candidates
+    from that version are appended until the minimum is met or top_k is reached. This prevents
+    the model from answering a comparison question with only one side of the evidence.
+    """
+    reranked_keys = {_hit_key(h) for h in reranked}
+    in_result: dict = {}
+    for h in reranked:
+        in_result.setdefault(_version_group(h), 0)
+        in_result[_version_group(h)] += 1
+
+    # Best-scoring unused candidates, grouped by version
+    reserve_by_group: dict = {}
+    for c in sorted(candidates, key=lambda c: c.get("score", 0.0), reverse=True):
+        if _hit_key(c) not in reranked_keys:
+            reserve_by_group.setdefault(_version_group(c), []).append(c)
+
+    result = list(reranked)
+    for group, items in reserve_by_group.items():
+        have = in_result.get(group, 0)
+        needed = min_per_group - have
+        for item in items[:max(0, needed)]:
+            if len(result) < top_k:
+                result.append(item)
+    return result[:top_k]
+
+
 def dedupe_candidates(all_results: list) -> list:
     """Collapses hits that came back from more than one sub-query search.
 

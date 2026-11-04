@@ -16,6 +16,9 @@ spec:
     name: main-service
   port:
     targetPort: 8000
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
 
 ---
 # Only needed if you are serving this repo's own standalone frontend build -

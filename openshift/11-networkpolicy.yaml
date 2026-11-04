@@ -1,28 +1,3 @@
-# Network policies for a restricted-network cluster: default-deny ingress,
-# then explicit allows for the traffic this stack actually needs. NetworkPolicy
-# only governs traffic INTO a pod (ingress) and, for the last two policies,
-# OUT of a pod (egress) - it says nothing about what's reachable at the network
-# layer outside the cluster (firewalls, proxies), which your platform/network
-# team owns separately. Apply after 07-services.yaml; before that, nothing
-# exists yet for these selectors to match.
-#
-# These assume the OVN-Kubernetes/SDN default of "no policy targeting a pod ==
-# all traffic allowed" and rely on every namespace carrying the automatic
-# `kubernetes.io/metadata.name` label (Kubernetes 1.21+, i.e. every supported
-# OpenShift 4.x version) rather than an SDN-specific policy-group label, which
-# varies by plugin/version - verify with:
-#   oc get ns openshift-ingress --show-labels
-# and swap the selector below if your cluster does not carry it.
-#
-# If your cluster/project already enforces its own default-deny or a stricter
-# baseline, treat the "allow" policies here as the list of holes to punch in
-# it rather than applying the default-deny-all below on top of another one.
-
-# ------------------------------------------------------------------------
-# 1. Default-deny all ingress in this namespace. Every allow policy below is
-#    additive to this - without it, "no NetworkPolicy selects this pod" means
-#    unrestricted, so the allows would be allow-lists with nothing to narrow.
-# ------------------------------------------------------------------------
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -33,11 +8,6 @@ spec:
     - Ingress
 
 ---
-# ------------------------------------------------------------------------
-# 2. The router (serving 08-routes.yaml) reaches main-service on 8000. This is
-#    the only way a browser reaches this service - there is no other ingress
-#    path to allow.
-# ------------------------------------------------------------------------
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -58,11 +28,6 @@ spec:
           port: 8000
 
 ---
-# ------------------------------------------------------------------------
-# 3. Only needed if you deploy this repo's own standalone frontend
-#    (openshift/06-deployment-frontend.yaml) - see the note at the top of
-#    that file. Delete this policy if you don't.
-# ------------------------------------------------------------------------
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -83,12 +48,6 @@ spec:
           port: 8080
 
 ---
-# ------------------------------------------------------------------------
-# 4. main-service calls parsing-indexing-service's REST surface (ParseFile,
-#    Index, Delete). Nothing else needs to reach this pod - it has no Route
-#    and no other caller. The kb-worker pod (separate Deployment) pulls work
-#    from Redis, so it never needs inbound access.
-# ------------------------------------------------------------------------
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -109,13 +68,6 @@ spec:
           port: 8001
 
 ---
-# ------------------------------------------------------------------------
-# 5. parsing-indexing-service calls Tika (CONVERTER_URL) for legacy .doc/.ppt.
-#    Delete this policy - and 09-deployment-tika.yaml - if you don't deploy
-#    Tika. The comment in 09-deployment-tika.yaml already notes it has no
-#    auth of its own, so this is the only thing that should be allowed to
-#    reach it.
-# ------------------------------------------------------------------------
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -136,20 +88,6 @@ spec:
           port: 9998
 
 ---
-# ------------------------------------------------------------------------
-# 6. Egress from main-service: DNS, then MSSQL/Redis/Mongo (openshift/01-secrets.yaml)
-#    and the chat + embedding LiteLLM/Azure endpoint (openshift/02-configmap.yaml).
-#    Mongo and the embedding endpoint are new here since Search moved in-process
-#    into main-service - previously only indexing-rpc-server needed them (policy 7).
-#    MSSQL/Redis/Mongo are usually inside the cluster's network but outside this
-#    namespace (OpenShift's own instances, per the prerequisites in
-#    docs/openshift-deploy.md) - ipBlock needs their real CIDR/IP, which
-#    NetworkPolicy cannot express as a hostname. Fill in every <PLACEHOLDER>
-#    below, or drop the ipBlock entries and rely on the cluster's egress
-#    firewall/proxy instead if that's how your project controls egress -
-#    NetworkPolicy and OpenShift's project-level EgressNetworkPolicy /
-#    EgressFirewall are separate mechanisms and commonly used together.
-# ------------------------------------------------------------------------
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -180,38 +118,32 @@ spec:
       ports:
         - protocol: TCP
           port: 6379
-    # Search runs in-process here now (02-configmap.yaml's Vector store &
-    # query-time embedding block) - same Mongo instance indexing-rpc-server
-    # reaches in policy 7 below, so the same CIDR.
     - to:
         - ipBlock:
             cidr: 10.228.146.3/32
       ports:
         - protocol: TCP
           port: 27018
-    # The chat LLM endpoint (LITELLM_BASE_URL) and the embedding endpoint
-    # (EMBEDDING_BASE_URL, both in 02-configmap.yaml) are public HTTPS
-    # hostnames (e.g. an Azure AI Foundry resource), not a fixed IP -
-    # NetworkPolicy egress can't select on hostname. Either resolve them to
-    # the IP range your provider publishes, or - more commonly for a
-    # restricted-network cluster - route this pod's egress through an
-    # explicit proxy/gateway and allow only that here. In this deployment
-    # EMBEDDING_BASE_URL is the same proxy as LITELLM_BASE_URL, so one entry
-    # covers both; add a second if yours differ.
     - to:
         - ipBlock:
             cidr: 10.231.255.253/32
       ports:
         - protocol: TCP
           port: 443
+    - to:
+        - ipBlock:
+            cidr: 10.228.146.68/32
+      ports:
+        - protocol: TCP
+          port: 443
+    - to:
+        - ipBlock:
+            cidr: 10.62.145.101/32
+      ports:
+        - protocol: TCP
+          port: 443
 
 ---
-# ------------------------------------------------------------------------
-# 7. Egress from parsing-indexing-service: DNS, MSSQL (ingest results),
-#    Redis (Celery broker), Mongo, Tika (if deployed - pod-to-pod, no
-#    ipBlock needed), the embedding/vision endpoints. Same "hostname, not
-#    IP" caveats as policy 6 above.
-# ------------------------------------------------------------------------
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -261,13 +193,20 @@ spec:
       ports:
         - protocol: TCP
           port: 443
+    - to:
+        - ipBlock:
+            cidr: 10.228.146.68/32
+      ports:
+        - protocol: TCP
+          port: 443
+    - to:
+        - ipBlock:
+            cidr: 10.62.145.101/32
+      ports:
+        - protocol: TCP
+          port: 443
 
 ---
-# ------------------------------------------------------------------------
-# 8. Egress from kb-worker: DNS, MSSQL (writes ingest results), Redis
-#    (Celery broker), Mongo, the embedding endpoint, and main-service:8000
-#    for the catalog-refresh callback after a successful ingest.
-# ------------------------------------------------------------------------
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -310,8 +249,18 @@ spec:
       ports:
         - protocol: TCP
           port: 443
-    # Catalog-refresh callback: the worker POSTs to main-service's
-    # /internal/catalog/refresh after a successful ingest (MAIN_SERVICE_URL).
+    - to:
+        - ipBlock:
+            cidr: 10.228.146.68/32
+      ports:
+        - protocol: TCP
+          port: 443
+    - to:
+        - ipBlock:
+            cidr: 10.62.145.101/32
+      ports:
+        - protocol: TCP
+          port: 443
     - to:
         - podSelector:
             matchLabels:
@@ -321,11 +270,6 @@ spec:
           port: 8000
 
 ---
-# ------------------------------------------------------------------------
-# 9. Allow kb-worker to reach main-service on 8000 (catalog-refresh
-#    callback). Ingress to main-service is otherwise restricted to the
-#    router (policy 2).
-# ------------------------------------------------------------------------
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

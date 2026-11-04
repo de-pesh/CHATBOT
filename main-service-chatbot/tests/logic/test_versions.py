@@ -40,6 +40,11 @@ def test_the_same_document_in_two_formats_and_versions_shares_a_key():
     ("It used to say something else, what was it?", Mode.PREVIOUS, None),
     ("What does version 2 require?", Mode.SPECIFIC, "2"),
     ("what does v3.2 say about backups", Mode.SPECIFIC, "3.2"),
+    # User-reported phrases
+    ("what is this as per v4 document", Mode.SPECIFIC, "4"),
+    ("as per v4", Mode.SPECIFIC, "4"),
+    ("whats difference in v4 & v5", Mode.ALL, None),
+    ("what changed between v4 and v5", Mode.ALL, None),
 ])
 def test_the_wording_of_a_question_picks_the_versions(question, mode, token):
     assert detect_scope(question) == VersionScope(mode, token)

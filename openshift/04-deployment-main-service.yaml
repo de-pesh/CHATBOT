@@ -14,10 +14,6 @@ spec:
       labels:
         app: main-service
     spec:
-      # See openshift/03-pvc.yaml: the arbitrary UID OpenShift assigns this
-      # pod always lands in GID 0 (baked into the UBI9 image's own user
-      # database, not a Kubernetes setting) - fsGroup: 0 makes the PVC mount
-      # Remove if quay-quay-registry.apps.dda-desc-az1-01.desccii.local/dda-desc/chatbot-main-service is a public repository.
       # LiteLLM proxy hostname - cluster CoreDNS does not resolve govai.ae.
       # If the IP changes: update this in 04-deployment-main-service.yaml,
       # 05-deployment-parsing-indexing-service.yaml, and 05b-deployment-kb-worker.yaml,
@@ -42,9 +38,6 @@ spec:
                 name: main-service-config
             - secretRef:
                 name: main-service-secrets
-          volumeMounts:
-            - name: file-store
-              mountPath: /data/files
           # The port only opens once startup finishes, and startup now includes
           # creating the database and applying schema scripts on a first deploy
           # (a replica waiting on another's lock can add up to 2 minutes). Until
@@ -84,7 +77,3 @@ spec:
             limits:
               cpu: "1"
               memory: "1Gi"
-      volumes:
-        - name: file-store
-          persistentVolumeClaim:
-            claimName: chatbot-file-store

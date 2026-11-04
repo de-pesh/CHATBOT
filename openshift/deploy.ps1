@@ -4,7 +4,7 @@
 #   .\openshift\build-push.ps1 v1        # on a machine with docker (once per release)
 #   .\openshift\deploy.ps1 v1            # on a machine with oc
 #
-# Usage: deploy.ps1 <image-tag> [namespace]     (namespace defaults to ai-common)
+# Usage: deploy.ps1 <image-tag> [namespace]     (namespace defaults to ai-dca)
 # Re-running is safe; to roll out a new release, build-push a new tag and run deploy.ps1 with it.
 
 param(
@@ -25,7 +25,7 @@ if ($LASTEXITCODE -ne 0) {
 Set-Location (Split-Path -Parent $MyInvocation.MyCommand.Path)
 
 # Refuse to deploy with a value still to fill in.
-$checkFiles = @("01-secrets.yaml","02-configmap.yaml","03-pvc.yaml","08-routes.yaml","11-networkpolicy.yaml")
+$checkFiles = @("01-secrets.yaml","02-configmap.yaml","08-routes.yaml","11-networkpolicy.yaml")
 $left = @()
 foreach ($f in $checkFiles) {
     if (Test-Path $f) {
@@ -58,8 +58,15 @@ function Apply-Manifest($file) {
     (Get-Content $file -Raw) -replace '<TAG>', $Tag | oc apply -n $Namespace -f -
 }
 
+# Skip the PVC when STORAGE_TYPE=quay (no shared volume needed).
+$configmapContent = Get-Content "02-configmap.yaml" -Raw
+if ($configmapContent -match 'STORAGE_TYPE:\s*"local"') {
+    Apply-Manifest "03-pvc.yaml"
+} else {
+    Write-Host "--> skipping 03-pvc.yaml (STORAGE_TYPE != local)"
+}
 foreach ($f in @(
-    "03-pvc.yaml", "01-secrets.yaml", "02-configmap.yaml", "07-services.yaml",
+    "01-secrets.yaml", "02-configmap.yaml", "07-services.yaml",
     "05-deployment-parsing-indexing-service.yaml",
     "05b-deployment-kb-worker.yaml",
     "04-deployment-main-service.yaml",

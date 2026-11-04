@@ -43,28 +43,35 @@ def _extract_control_ids(text: str) -> list[str]:
 # Path 1 — Heading-based splitter for markdown
 # ---------------------------------------------------------------------------
 _HEADING_RE = re.compile(r"(?m)^(#{1,6} .+)$")
+# pymupdf_helper writes "# Page 1", "# Page 2", … for every PDF page.
+_PAGE_HEADING_RE = re.compile(r"^# Page (\d+)$")
 
 
 def _split_at_headings(text: str, chunk_size: int, chunk_overlap: int) -> list[dict[str, Any]]:
     splitter = RecursiveCharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-    sections: list[tuple[str, str]] = []
+    sections: list[tuple[str, str, int | None]] = []
     current_heading = ""
     current_parts: list[str] = []
+    current_page: int | None = None
 
     for line in text.splitlines(keepends=True):
-        if _HEADING_RE.match(line.rstrip()):
+        stripped = line.rstrip()
+        if _HEADING_RE.match(stripped):
             if current_heading or current_parts:
-                sections.append((current_heading, "".join(current_parts)))
-            current_heading = line.rstrip()
+                sections.append((current_heading, "".join(current_parts), current_page))
+            page_match = _PAGE_HEADING_RE.match(stripped)
+            if page_match:
+                current_page = int(page_match.group(1))
+            current_heading = stripped
             current_parts = []
         else:
             current_parts.append(line)
 
     if current_heading or current_parts:
-        sections.append((current_heading, "".join(current_parts)))
+        sections.append((current_heading, "".join(current_parts), current_page))
 
     chunks: list[dict[str, Any]] = []
-    for heading, body in sections:
+    for heading, body, page in sections:
         section_text = (f"{heading}\n{body}" if heading else body).strip()
         if not section_text:
             continue
@@ -74,6 +81,8 @@ def _split_at_headings(text: str, chunk_size: int, chunk_overlap: int) -> list[d
         )
         for sub in sub_chunks:
             metadata: dict[str, Any] = {"section_heading": heading}
+            if page is not None:
+                metadata["page_number"] = page
             control_ids = _extract_control_ids(sub)
             if control_ids:
                 metadata["control_ids"] = control_ids

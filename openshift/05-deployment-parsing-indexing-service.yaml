@@ -35,9 +35,6 @@ spec:
                 name: indexing-rpc-server-config
             - secretRef:
                 name: indexing-rpc-server-secrets
-          volumeMounts:
-            - name: file-store
-              mountPath: /data/files
           readinessProbe:
             httpGet:
               path: /health
@@ -64,7 +61,4 @@ spec:
             limits:
               cpu: "2"
               memory: "3Gi"
-      volumes:
-        - name: file-store
-          persistentVolumeClaim:
-            claimName: chatbot-file-store
+
