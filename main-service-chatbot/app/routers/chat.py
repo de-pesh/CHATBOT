@@ -12,6 +12,7 @@ from app.config import Settings, get_settings
 from app.controllers.chat_citations import linkify_citations, prefetch_citation_urls
 from app.controllers.chat_controller import (
     ChatSessionController,
+    load_history_as_messages,
     process_chat,
     process_chat_stream,
 )
@@ -155,6 +156,8 @@ async def chat(
             sessions.ensure_session(conversation_id, user_id, prompt, current_user),
             context_for(current_user, db_service, settings),
         )
+        if payload.conversation_id and not chat_history:
+            chat_history = await load_history_as_messages(db_service, conversation_id, user_id, settings.REWRITE_HISTORY_TURNS)
         history_id = await sessions.insert_prompt(conversation_id, prompt, user_id)
         prep_ms = ms_since(request_start)
 
@@ -233,6 +236,8 @@ async def chat_stream(
         sessions.ensure_session(payload.conversation_id, user_id, prompt, current_user),
         context_for(current_user, db_service, settings),
     )
+    if payload.conversation_id and not chat_history:
+        chat_history = await load_history_as_messages(db_service, conversation_id, user_id, settings.REWRITE_HISTORY_TURNS)
     # Logging the question is only needed once there is an answer to attach to it, so it
     # runs alongside the turn. The session check above stays first: it is what turns a
     # foreign conversation_id into a 404.

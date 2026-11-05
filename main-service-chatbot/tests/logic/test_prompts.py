@@ -106,9 +106,10 @@ def test_the_budget_is_spent_on_alternates_first():
         {"query": "B", "type": "original"}, {"query": "B2", "type": "alternate"},
         {"query": "C", "type": "original"},
     ]}
-    questions, _, _ = parse_new_queries(data, QUERY)
+    # Use an explicit tight budget (4) so the test is independent of the global default.
+    questions, _, _ = _parse(data, QUERY, MAX_SEARCH_QUERIES, 4)
     assert questions[:3] == ["A", "B", "C"], "an original was dropped"
-    assert len(questions) == MAX_EXPANDED_QUERIES
+    assert len(questions) == 4
 
 
 def test_every_question_the_user_asked_is_searched():
@@ -122,9 +123,10 @@ def test_every_question_the_user_asked_is_searched():
         [{"query": q, "type": "original"} for q in asked]
         + [{"query": "an alternate", "type": "alternate"}]
     )}
-    questions, _, _ = parse_new_queries(data, QUERY)
+    # Use an explicit tight budget (4) so the test is independent of the global default.
+    questions, _, _ = _parse(data, QUERY, MAX_SEARCH_QUERIES, 4)
     assert questions == asked
-    assert len(questions) > MAX_EXPANDED_QUERIES
+    assert len(questions) > 4
 
 
 @pytest.mark.parametrize("first,second", [
@@ -501,24 +503,24 @@ def test_the_intent_prompt_greets_without_time_of_day():
 
 def test_a_simple_greeting_is_timezone_agnostic():
     from app.logic.prompts import simple_greeting_reply
-    assert simple_greeting_reply(9, DAY_STARTS).startswith("Hi!")
-    assert simple_greeting_reply(22, DAY_STARTS).startswith("Hi!")
+    assert simple_greeting_reply(9, DAY_STARTS) == "Hi, How can I help you today?"
+    assert simple_greeting_reply(22, DAY_STARTS) == "Hi, How can I help you today?"
 
 
 def test_a_simple_greeting_with_no_local_hour_is_still_a_full_reply():
     from app.logic.prompts import simple_greeting_reply
-    assert simple_greeting_reply(None, DAY_STARTS).startswith("Hi!")
+    assert simple_greeting_reply(None, DAY_STARTS) == "Hi, How can I help you today?"
 
 
 def test_a_simple_greeting_addresses_the_user_by_name():
     from app.logic.prompts import simple_greeting_reply
     reply = simple_greeting_reply(9, DAY_STARTS, {"name": "Deepesh"})
-    assert reply.startswith("Hi, Deepesh!")
+    assert reply == "Hi, Deepesh! How can I help you today?"
 
 
 def test_a_simple_greeting_with_no_name_in_context_is_unaffected():
     from app.logic.prompts import simple_greeting_reply
-    assert simple_greeting_reply(9, DAY_STARTS, {"name": None, "preferences": {}}).startswith("Hi!")
+    assert simple_greeting_reply(9, DAY_STARTS, {"name": None, "preferences": {}}) == "Hi, How can I help you today?"
 
 
 @pytest.mark.parametrize("names", ["", "SAMA Framework"])

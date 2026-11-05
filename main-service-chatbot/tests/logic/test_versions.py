@@ -20,6 +20,11 @@ from app.logic.versions import (
     ("Policy.docx", ("policy", None)),           # a new format is the next version of the same document
     ("report_final.pdf", ("report_final", None)),
     ("v2.pdf", ("v2", None)),
+    # Bare year suffix — links "policy_2024.pdf" and "policy_2025.pdf" as the same document
+    ("policy_2024.pdf", ("policy", "2024")),
+    ("policy 2025.docx", ("policy", "2025")),
+    ("Procurement Policy-2023.pdf", ("procurement policy", "2023")),
+    ("report1990.pdf", ("report1990", None)),     # no separator → not a version tag
 ])
 def test_a_file_name_becomes_a_document_key_and_an_optional_version_label(name, expected):
     assert split_document_name(name) == expected
@@ -27,6 +32,10 @@ def test_a_file_name_becomes_a_document_key_and_an_optional_version_label(name, 
 
 def test_the_same_document_in_two_formats_and_versions_shares_a_key():
     assert split_document_name("Policy_v1.pdf")[0] == split_document_name("policy V2.docx")[0]
+
+
+def test_year_suffixed_files_share_a_key():
+    assert split_document_name("policy_2024.pdf")[0] == split_document_name("policy_2025.pdf")[0] == "policy"
 
 
 @pytest.mark.parametrize("question, mode, token", [
@@ -45,6 +54,14 @@ def test_the_same_document_in_two_formats_and_versions_shares_a_key():
     ("as per v4", Mode.SPECIFIC, "4"),
     ("whats difference in v4 & v5", Mode.ALL, None),
     ("what changed between v4 and v5", Mode.ALL, None),
+    # Bare year references
+    ("what is abc according to policy 2024", Mode.SPECIFIC, "2024"),
+    ("what does the 2024 policy say about X", Mode.SPECIFIC, "2024"),
+    ("compare 2024 and 2025 versions", Mode.ALL, None),
+    # Year as time reference — must NOT trigger SPECIFIC
+    ("what happened in 2024", Mode.LATEST, None),
+    ("what changed since 2023", Mode.ALL, None),   # "what changed" triggers compare regardless of year
+    ("requirements before 2025", Mode.LATEST, None),
 ])
 def test_the_wording_of_a_question_picks_the_versions(question, mode, token):
     assert detect_scope(question) == VersionScope(mode, token)

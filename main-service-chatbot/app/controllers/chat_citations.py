@@ -61,7 +61,8 @@ async def _resolve_citation_url(
         if url:
             return url
         if chatbot_base_url:
-            return f"{chatbot_base_url.rstrip('/')}/files/download-by-name?name={quote(file_name)}"
+            base = f"{chatbot_base_url.rstrip('/')}/files/download-by-name?name={quote(file_name)}"
+            return f"{base}&path={quote(stored_path)}" if stored_path else base
         return None
     except Exception:
         logger.exception("Failed to build a download URL for %s", stored_path or file_name)

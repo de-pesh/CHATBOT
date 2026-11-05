@@ -44,8 +44,8 @@ def simple_greeting_reply(local_hour=None, day_starts: tuple[int, int, int, int]
     model call at all, so it is instant and never depends on timezone or time-of-day.
     """
     name = (user_context or {}).get("name")
-    greeting = f"Hi, {name}!" if name else "Hi!"
-    return f"{greeting} I can help answer questions from your documents. What would you like to know?"
+    greeting = f"Hi, {name}!" if name else "Hi,"
+    return f"{greeting} How can I help you today?"
 
 
 def fetch_intent_prompt(
@@ -105,11 +105,10 @@ def fetch_intent_prompt(
     if profile_block:
         greeting_reply += " Address the user by the name in <user_profile> when it has one."
     tags = ("knowledge_base", "recent_conversation", "latest_user_message")
+    trimmed_history = _recent_history(chat_history, history_turns, history_chars)
+    has_prior_answer = any(m.get("role") == "assistant" for m in trimmed_history)
     recent = _as_data(
-        "\n".join(
-            f'{m.get("role")}: {m["content"]}'
-            for m in _recent_history(chat_history, history_turns, history_chars)
-        ),
+        "\n".join(f'{m.get("role")}: {m["content"]}' for m in trimmed_history),
         *tags,
     )
     catalog_text = _as_data(catalog_text or "", *tags)
@@ -134,7 +133,7 @@ Classify the LATEST user message as exactly one of:
   * Any question or request about a subject, even one that seems unrelated to the documents above.
   * Any request to explain, summarise, describe or "tell me about" a named subject or a named document - even when that name appears in the list above. ("tell me about SAMA", "summarise the UAE regulation", "what does the SAMA framework cover?" are all "knowledge".)
   * Any message that mixes a greeting or thanks with a question (for example "hi, what is the incident policy?").
-  * A follow-up that depends on the recent conversation.
+  * A follow-up that depends on the recent conversation.{' This conversation already has an assistant reply above — treat any reference to it ("tell me more", "explain that", "what about point 3", "how about the second one") as "knowledge", never as chitchat.' if has_prior_answer else ''}
 
 If you are not sure, choose "knowledge". Never choose another label just because a subject is not in the list above.
 

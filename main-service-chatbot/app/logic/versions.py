@@ -12,8 +12,13 @@ import re
 from dataclasses import dataclass
 from enum import StrEnum
 
-# A trailing version tag on a file name: "Policy_v3.2", "Policy v2", "Policy-v10".
-_NAME_VERSION = re.compile(r"[\s._-]*v(\d+(?:\.\d+)*)$", re.IGNORECASE)
+# A trailing version tag: "Policy_v3.2", "Policy v2", or a bare year "Policy_2024".
+# Group 1 = v-prefixed number ("v3.2"), group 2 = bare 4-digit year with a separator ("_2024").
+_NAME_VERSION = re.compile(
+    r"[\s._-]*v(\d+(?:\.\d+)*)$"
+    r"|[\s._-]+((?:19|20)\d{2})$",
+    re.IGNORECASE,
+)
 _EXTENSION = re.compile(r"\.[A-Za-z0-9]{1,5}$")
 
 
@@ -34,11 +39,16 @@ def clean_label(label: str | None) -> str | None:
 
 
 def split_document_name(file_name: str) -> tuple[str, str | None]:
-    """(document key, version label from the name or None): "Info Sec Policy_v3.2.pdf" -> ("info sec policy", "3.2")."""
+    """(document key, version label from the name or None).
+
+    "Info Sec Policy_v3.2.pdf" -> ("info sec policy", "3.2")
+    "Policy_2024.pdf"          -> ("policy", "2024")   bare year with separator
+    """
     stem = _EXTENSION.sub("", (file_name or "").strip())
     label, key_stem = None, stem
     if match := _NAME_VERSION.search(stem):
-        label, key_stem = match.group(1), stem[:match.start()]
+        label = match.group(1) or match.group(2)  # group 1: v-prefixed, group 2: bare year
+        key_stem = stem[:match.start()]
     key = " ".join((key_stem or stem).lower().split())  # a file named only "v2.pdf" keeps its name as its key
     return key, (label if key_stem else None)
 
@@ -88,23 +98,37 @@ _PREVIOUS = re.compile(
 )
 _SPECIFIC = re.compile(r"\b(?:version|ver|revision|rev|v)\.?\s*(\d+(?:\.\d+)*)\b", re.IGNORECASE)
 
+# A bare 4-digit year that looks like a version label ("policy 2024", "2024 document").
+_BARE_YEAR = re.compile(r"\b((?:19|20)\d{2})\b")
+# A year that is a time reference, NOT a version ("in 2024", "since 2025", "before 2023").
+_TEMPORAL_YEAR = re.compile(
+    r"\b(?:in|during|since|before|after|from|until|by|around|throughout)\s+((?:19|20)\d{2})\b",
+    re.IGNORECASE,
+)
+
 
 def detect_scope(question: str) -> VersionScope:
     """Which versions a question is asking about, from its wording. Deterministic and testable; no model call.
 
     - "compare ...", "what changed", two different versions named   -> ALL versions
     - "the previous / older version ..."                             -> only older versions
-    - "version 2", "v3.2"                                            -> that version
+    - "version 2", "v3.2", "policy 2024"                            -> that version
     - anything else, "current" / "latest" included                   -> the latest versions
     """
     text = question or ""
-    named = list(dict.fromkeys(match.group(1) for match in _SPECIFIC.finditer(text)))
-    if _COMPARE.search(text) or len(named) > 1:
+    # Explicit version tokens: "v3.2", "version 4", "rev 2".
+    named = list(dict.fromkeys(m.group(1) for m in _SPECIFIC.finditer(text)))
+    # Bare years that aren't temporal references ("in 2024" is time, "policy 2024" is a version).
+    temporal = {m.group(1) for m in _TEMPORAL_YEAR.finditer(text)}
+    year_tokens = list(dict.fromkeys(m.group(1) for m in _BARE_YEAR.finditer(text) if m.group(1) not in temporal))
+    all_named = list(dict.fromkeys(named + [t for t in year_tokens if t not in named]))
+
+    if _COMPARE.search(text) or len(all_named) > 1:
         return VersionScope(Mode.ALL)
     if _PREVIOUS.search(text):
         return VersionScope(Mode.PREVIOUS)
-    if named:
-        return VersionScope(Mode.SPECIFIC, named[0])
+    if all_named:
+        return VersionScope(Mode.SPECIFIC, all_named[0])
     return LATEST
 
 

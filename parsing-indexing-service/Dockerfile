@@ -7,95 +7,31 @@ ARG BASE_REGISTRY=registry.access.redhat.com
 # ==============================================================================
 FROM ${BASE_REGISTRY}/ubi9/python-312:latest AS builder
 
-# git-lfs is not in the UBI9 repos, so pull EPEL9 in for it. Build-stage only,
-# so there is no need to uninstall it afterwards.
-USER 0
-# EPEL supplies packages UBI9 does not carry. On a closed network set
-# EPEL_RPM_URL="" and make sure the internal repos already provide them.
-ARG EPEL_RPM_URL=https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
-RUN if [ -n "$EPEL_RPM_URL" ]; then dnf install -y "$EPEL_RPM_URL"; fi && \
-    dnf install -y git git-lfs && \
-    git lfs install --system
 USER 1001
 
 WORKDIR /opt/app-root/src
 
 # Dependency manifests first so code edits do not bust the install layer.
-COPY --chown=1001:0 pyproject.toml ./
+COPY --chown=1001:0 requirements.txt ./
 
-# UBI9 ships a venv at /opt/app-root but leaves VIRTUAL_ENV unset. Poetry then
-# has no active env to detect and, with virtualenvs.create=false, falls back to
-# the base interpreter under /usr - whose site-packages is root-owned, so the
-# install dies with PermissionError as UID 1001. Pointing VIRTUAL_ENV at the
-# venv that is already on PATH keeps poetry inside it.
+# UBI9 ships a venv at /opt/app-root but leaves VIRTUAL_ENV unset. pip then
+# installs into the base interpreter under /usr - whose site-packages is
+# root-owned - and dies with PermissionError as UID 1001. Pointing VIRTUAL_ENV
+# at the venv already on PATH keeps pip inside it.
 ENV VIRTUAL_ENV=/opt/app-root
 
-# Internal PyPI mirror, when one is configured. pip and poetry have to be told
-# separately - poetry does not read pip's index-url.
+# Internal PyPI mirror, when one is configured.
 ARG PIP_INDEX_URL=""
 ARG PIP_TRUSTED_HOST=""
-# local (default): install torch, sentence-transformers and bake the embedding
-# model in. remote: skip all three - a much smaller, faster image - and take
-# embeddings from EMBEDDING_BASE_URL at runtime (EMBEDDING_TYPE=litellm/azure/remote).
-ARG EMBEDDING_MODE=local
-# Poetry goes in its own throwaway venv, not the app venv. "pip uninstall
-# poetry" leaves its dependencies (dulwich, rapidfuzz, zstandard - ~43 MB)
-# behind in site-packages, and poetry also keeps an artifact cache under
-# .cache/pypoetry - ~650 MB for this dependency set - that pip's
-# --no-cache-dir does not cover. Both would otherwise ride into the runtime
-# stage inside /opt/app-root.
 RUN if [ -n "$PIP_INDEX_URL" ]; then \
         pip config set global.index-url "$PIP_INDEX_URL"; \
         if [ -n "$PIP_TRUSTED_HOST" ]; then pip config set global.trusted-host "$PIP_TRUSTED_HOST"; fi; \
-        export POETRY_PYPI_MIRROR_URL="$PIP_INDEX_URL"; \
     fi; \
-    python -m venv /tmp/poetry-venv && \
-    /tmp/poetry-venv/bin/pip install --no-cache-dir poetry && \
-    /tmp/poetry-venv/bin/poetry config virtualenvs.create false && \
-    groups=main && { [ "$EMBEDDING_MODE" != "local" ] || groups=main,local-embeddings; } && \
-    /tmp/poetry-venv/bin/poetry install --no-root --only "$groups" --no-interaction --no-ansi && \
-    rm -rf /tmp/poetry-venv /opt/app-root/src/.cache/pypoetry /opt/app-root/src/.cache/pip && \
-    python -c "import fastapi, uvicorn, numpy, pptx, docx, extract_msg, pymongo, openpyxl, PIL, pdfplumber, bs4, lxml, langchain_azure_ai, langchain_openai, langchain_ollama, langchain_core, langchain_text_splitters, pydantic_settings, aiohttp, azure.storage.blob; from langchain_ollama import ChatOllama; assert 'num_ctx' in ChatOllama.model_fields, 'langchain-ollama no longer accepts num_ctx - parsing/vision/ollama_vision_llm.py passes it'; print('dependency smoke test OK')" && \
-    if [ "$EMBEDDING_MODE" = "local" ]; then python -c "import sentence_transformers, torch"; fi
+    pip install --no-cache-dir -r requirements.txt && \
+    rm -rf /opt/app-root/src/.cache/pip && \
+    python -c "import fastapi, uvicorn, numpy, pptx, docx, extract_msg, pymongo, openpyxl, PIL, pdfplumber, bs4, lxml, langchain_azure_ai, langchain_openai, langchain_ollama, langchain_core, langchain_text_splitters, pydantic_settings, aiohttp, azure.storage.blob; print('dependency smoke test OK')"
 
-# Model must land next to app/ - embedding_service.py resolves it as
-# Path(__file__).parents[2] / "hf_models" / "gte-multilingual-base".
-# HF_MODEL_MODE=download clones from huggingface.co; =vendored uses the copy
-# already placed in <service>/vendor/, for machines with no internet access.
-ARG HF_MODEL_MODE=download
-COPY --chown=1001:0 vendor/ ./vendor/
-RUN if [ "$EMBEDDING_MODE" = "remote" ]; then \
-        echo "EMBEDDING_MODE=remote: no local embedding model in this image."; \
-    elif [ "$HF_MODEL_MODE" = "vendored" ]; then \
-        test -d vendor/gte-multilingual-base || { \
-            echo "HF_MODEL_MODE=vendored but vendor/gte-multilingual-base is missing"; exit 1; }; \
-        mkdir -p hf_models && cp -r vendor/gte-multilingual-base hf_models/; \
-    else \
-        echo "Downloading Hugging Face model..." && \
-        git clone --depth 1 https://huggingface.co/Alibaba-NLP/gte-multilingual-base \
-            hf_models/gte-multilingual-base && \
-        rm -rf hf_models/gte-multilingual-base/.git; \
-    fi && rm -rf vendor && echo "Model ready."
-
-# Warm the model once, while the network is still reachable.
-#
-# gte-multilingual-base's config.json maps its classes to code in a DIFFERENT
-# repo - "auto_map": {"AutoModel": "Alibaba-NLP/new-impl--modeling.NewModel"} -
-# which transformers downloads at load time because trust_remote_code=True.
-# Cloning only the model repo and then setting HF_HUB_OFFLINE=1 below meant that
-# lookup could never resolve, so every embed call failed at runtime with
-# "Cannot generate embeddings because the model failed to load" and nothing
-# could ever be indexed.
-#
-# Loading it here caches that remote code into the image, and turns a silent
-# runtime failure into a build failure if the model cannot be loaded at all.
-RUN [ "$EMBEDDING_MODE" = "remote" ] || HF_HOME=/opt/app-root/src/.cache/huggingface \
-    python -c "\
-from sentence_transformers import SentenceTransformer; \
-m = SentenceTransformer('/opt/app-root/src/hf_models/gte-multilingual-base', trust_remote_code=True); \
-print('embedding model warm-up OK, dim =', m.get_sentence_embedding_dimension())"
-
-# Code last, so edits do not trigger a model redownload.
+# Code last.
 COPY --chown=1001:0 . .
 
 # OpenShift runs the container with an arbitrary UID in group 0, so every
@@ -180,23 +116,11 @@ COPY --from=builder --chown=1001:0 /opt/app-root /opt/app-root
 # Without this the store is root-owned 0755 and startup fails the writability
 # check in services/storage/local_file_storage.py.
 USER 0
-RUN mkdir -p /data/files && chown -R 1001:0 /data && chmod -R g=u /data && \
-    mkdir -p /opt/app-root/src/.cache/huggingface && \
-    chown -R 1001:0 /opt/app-root/src/.cache && \
-    chmod -R g=u /opt/app-root/src/.cache
+RUN mkdir -p /data/files && chown -R 1001:0 /data && chmod -R g=u /data
 USER 1001
 
-# HOME is not writable under an arbitrary UID; point every cache at the app dir.
-# TRANSFORMERS_CACHE is deliberately NOT set. It is deprecated, and it overrides
-# the hub cache path wholesale: with both set, HF_HOME put the warmed download
-# in .cache/huggingface/hub/ while TRANSFORMERS_CACHE made the lookup search
-# .cache/huggingface/ - one level too high. Every load then failed offline with
-# "couldn't connect to https://huggingface.co". HF_HOME alone is correct and
-# covers both the hub cache and the trust_remote_code module cache.
 ENV PYTHONUNBUFFERED=1 \
     HOME=/opt/app-root/src \
-    HF_HOME=/opt/app-root/src/.cache/huggingface \
-    EASYOCR_MODULE_PATH=/opt/app-root/src/.cache/easyocr \
     VIRTUAL_ENV=/opt/app-root
 
 EXPOSE 8001

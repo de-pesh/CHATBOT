@@ -23,14 +23,18 @@ PUSH_RETRY_SECONDS = 1.0
 
 async def stamp_upload(
     db_service: DatabaseService, file_id: int, file_name: str, version_label: str | None, effective_date: date | None,
+    document_key_override: str | None = None,
 ) -> dict:
     """Gives a just-created file record its document key and version number. Returns them as the
     `document_key`, `version_no`, `version_label` fields the ingest task carries to the worker.
 
     The label is the caller's if given, else the one in the file name ("Policy_v3.2.pdf" -> "3.2"), else none.
+    document_key_override lets the caller bypass the filename-derived key to group files that don't follow the
+    naming convention (e.g. "policy_2024.pdf" and "policy_2025.pdf" can share key "policy").
     The number is assigned inside the database in one locked step, so two uploads of a document at the same
     moment get different versions. Raises ValueError for a label with characters a prompt should not be handed."""
-    document_key, name_label = split_document_name(file_name)
+    derived_key, name_label = split_document_name(file_name)
+    document_key = document_key_override or derived_key
     label = clean_label(version_label) or name_label
     result = await db_service.call_procedure(
         StoredProcedures.ASSIGN_FILE_VERSION, [file_id, document_key, label, effective_date],

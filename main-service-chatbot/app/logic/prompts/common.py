@@ -88,20 +88,24 @@ def _language_of(data: dict):
     return name
 
 
-def _recent_history(chat_history, turns: int, chars: int) -> list:
+def _recent_history(chat_history, turns: int, chars: int, last_turn_chars: int | None = None) -> list:
     """The last `turns` messages, each clipped to `chars`, as role/content dicts.
 
-    A reference is resolved from the tail of the conversation, and the subject
-    of a long answer is in its opening lines, so neither bound costs the rewrite
-    anything it actually uses.
+    When `last_turn_chars` is given, the final two messages (the most recent
+    Q&A pair) use that limit instead of `chars`. This lets follow-up references
+    like "point 3" or "the second requirement" be resolved from the full
+    previous answer, without inflating the prompt for every older turn.
     """
+    messages = list((chat_history or [])[-turns:])
+    last_pair_start = max(0, len(messages) - 2)
     recent = []
-    for message in (chat_history or [])[-turns:]:
+    for i, message in enumerate(messages):
         if not isinstance(message, dict):
             continue
         content = str(message.get("content") or "")
+        limit = last_turn_chars if (last_turn_chars is not None and i >= last_pair_start) else chars
         recent.append({
             "role": str(message.get("role") or ""),
-            "content": content[:chars],
+            "content": content[:limit],
         })
     return recent

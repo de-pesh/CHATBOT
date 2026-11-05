@@ -20,6 +20,8 @@ from app.logic.index_health import stored_vector_summary
 from app.logic.lexical import Bm25Index
 from app.logic.mongo_queries import (
     ACTIVE,
+    IS_COMPARISON_FIELD,
+    IS_LATEST_FIELD,
     TEXT_FIELD,
     VECTOR_FIELD,
     clean_uri,
@@ -27,17 +29,36 @@ from app.logic.mongo_queries import (
     is_atlas_search_unavailable,
     is_index_already_exists,
     lacks_active_filter,
+    lacks_version_filter,
     redact_uri,
     split_valid_items,
     text_corpus_query,
     text_search_pipeline,
     vector_index_definition,
     vector_search_pipeline,
+    version_filter_for,
 )
 from app.logic.versions import Mode, VersionScope
 from app.services.vector.vector_store import VectorStore
 
 logger = logging.getLogger(__name__)
+
+
+def _mql_matches_hit(hit: dict[str, Any], version_filter: dict[str, Any]) -> bool:
+    """Evaluate the simple MQL dicts produced by version_filter_for() against a hit.
+    Supports equality and {$ne: v} / {$eq: v} — the only operators we emit."""
+    meta = hit.get("metadata") or {}
+    for key, cond in version_filter.items():
+        field = key[len("metadata."):] if key.startswith("metadata.") else key
+        val = meta.get(field)
+        if isinstance(cond, dict):
+            if "$ne" in cond and val == cond["$ne"]:
+                return False
+            if "$eq" in cond and val != cond["$eq"]:
+                return False
+        elif val != cond:
+            return False
+    return True
 
 
 class MongoEmbeddingStore(VectorStore):
@@ -60,6 +81,11 @@ class MongoEmbeddingStore(VectorStore):
     # pay for a doomed $vectorSearch round trip and the exception handling before
     # reaching the fallback it always ends up in.
     _atlas_vector_search_unavailable: bool = False
+
+    # True once we confirm the Atlas index declares is_latest and version_no as
+    # filter fields. When False, version filtering falls back to post-filtering with
+    # over-fetch (the original behaviour). Set in _ensure_vector_search_index.
+    _version_filter_in_index: bool = False
 
     # Collections whose existing vector index was already reported as lacking the
     # isactive filter: create_vector_index runs on every Index call, and the warning
@@ -181,6 +207,8 @@ class MongoEmbeddingStore(VectorStore):
             existing = []
         if existing:
             self._warn_if_filter_missing(existing[0], collection.name)
+            if not lacks_version_filter(existing[0]):
+                MongoEmbeddingStore._version_filter_in_index = True
             return True
 
         logger.info(f"Creating Atlas Vector Search index '{name}' on '{self.db_name}.{collection.name}' "
@@ -190,6 +218,7 @@ class MongoEmbeddingStore(VectorStore):
                 definition=vector_index_definition(VECTOR_FIELD, self.dimension), name=name, type="vectorSearch",
             ))
             logger.info(f"Submitted the create command for search index '{name}'. Index building may take time.")
+            MongoEmbeddingStore._version_filter_in_index = True
             return True
         except OperationFailure as e:
             if is_atlas_search_unavailable(e):
@@ -330,6 +359,44 @@ class MongoEmbeddingStore(VectorStore):
         return result.deleted_count
 
     # ------------------------------------------------------------------
+    # Version chunk fetch (for comparison generation)
+    # ------------------------------------------------------------------
+
+    async def fetch_chunks_for_version(
+        self, source_file_id: str, collection_name: str | None = None, limit: int = 500,
+    ) -> list[dict]:
+        """All active, non-comparison chunks for one indexed version, ordered by page number.
+        Used to gather source text for prebaked comparison generation."""
+        collection = self._coll(collection_name)
+        if collection is None:
+            return []
+        query = {
+            **ACTIVE,
+            "metadata.source_file_id": source_file_id,
+            IS_COMPARISON_FIELD: {"$ne": True},
+        }
+        projection = {TEXT_FIELD: 1, "metadata": 1, "_id": 0}
+        return await collection.find(query, projection).sort("metadata.page_number", 1).to_list(length=limit)
+
+    async def deactivate_comparison_chunks(
+        self, synthetic_source_id: str, collection_name: str | None = None,
+    ) -> int:
+        """Soft-deletes comparison chunks stored under a synthetic source_file_id.
+        Used to replace stale comparison chunks when force-regenerating."""
+        return await self.deactivate_data_by_source_id(synthetic_source_id, collection_name)
+
+    async def comparison_chunks_exist(
+        self, synthetic_source_id: str, collection_name: str | None = None,
+    ) -> bool:
+        """True if at least one active comparison chunk already exists for this version pair."""
+        collection = self._coll(collection_name)
+        if collection is None:
+            return False
+        return await collection.find_one({
+            **ACTIVE, "metadata.source_file_id": synthetic_source_id, IS_COMPARISON_FIELD: True,
+        }, {"_id": 1}) is not None
+
+    # ------------------------------------------------------------------
     # Search: hybrid = vector list + lexical list, fused by rank
     # ------------------------------------------------------------------
 
@@ -341,14 +408,48 @@ class MongoEmbeddingStore(VectorStore):
         query_text: str | None = None,
         version_scope: VersionScope | None = None,
     ) -> list[dict[str, Any]]:
-        """The hybrid search (see `_hybrid`), keeping only the hits in `version_scope`: the latest versions of
-        every document, older ones, one named version, or all. None = no filtering.
+        """Hybrid search scoped to `version_scope`.
 
-        Older versions of a passage rank right beside the version that replaced it, so a narrower scope asks
-        the search for VERSION_OVERFETCH_MULTIPLIER times `limit` and keeps what is in scope."""
+        When the Atlas index declares version filter fields (_version_filter_in_index):
+        - ALL mode: two parallel searches, one per side, fused for balanced coverage
+        - Other modes: single search with the version filter pushed into $vectorSearch/$text
+
+        On old indexes without version filter fields, falls back to the original
+        post-filter approach (overfetch and keep matching hits)."""
         if version_scope is None:
             return await self._hybrid(query_vector, collection_name, limit, query_text)
-        fetch = limit if version_scope.mode is Mode.ALL else limit * self.settings.VERSION_OVERFETCH_MULTIPLIER
+
+        # Only use the in-query filter when the Atlas index supports it and Atlas is up.
+        can_filter = MongoEmbeddingStore._version_filter_in_index and not MongoEmbeddingStore._atlas_vector_search_unavailable
+
+        if version_scope.mode is Mode.ALL:
+            if can_filter:
+                # Three independent passes: latest content, older content, and prebaked
+                # comparison chunks (is_comparison=True). Each has its own ANN budget.
+                # Comparison chunks excluded from the content passes to avoid double-counting.
+                latest_filter = {IS_LATEST_FIELD: {"$ne": False}, IS_COMPARISON_FIELD: {"$ne": True}}
+                older_filter = {IS_LATEST_FIELD: False, IS_COMPARISON_FIELD: {"$ne": True}}
+                comparison_filter = {IS_COMPARISON_FIELD: True}
+                latest_hits, older_hits, comparison_hits = await asyncio.gather(
+                    self._hybrid(query_vector, collection_name, limit, query_text, version_filter=latest_filter),
+                    self._hybrid(query_vector, collection_name, limit, query_text, version_filter=older_filter),
+                    self._hybrid(query_vector, collection_name, limit // 2, query_text, version_filter=comparison_filter),
+                )
+                from app.logic.rerank import fuse_query_hits
+                return fuse_query_hits([latest_hits, older_hits, comparison_hits], k=self.settings.HYBRID_RRF_K)
+            else:
+                # Old index: single fetch; balance_versions in the reranker compensates.
+                return await self._hybrid(query_vector, collection_name, limit, query_text)
+
+        # Non-ALL scope
+        if can_filter:
+            vf = version_filter_for(version_scope)
+            if vf:
+                return (await self._hybrid(query_vector, collection_name, limit, query_text, version_filter=vf))[:limit]
+
+        # Old index or no filter produced (shouldn't happen for non-None non-ALL scope,
+        # but be safe): overfetch then post-filter.
+        fetch = limit * self.settings.VERSION_OVERFETCH_MULTIPLIER
         hits = await self._hybrid(query_vector, collection_name, fetch, query_text)
         return [hit for hit in hits if version_scope.matches(hit.get("metadata") or {})][:limit]
 
@@ -358,6 +459,7 @@ class MongoEmbeddingStore(VectorStore):
         collection_name: str,
         limit: int,
         query_text: str | None,
+        version_filter: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """
         Cosine similarity over the vector index, fused with lexical relevance via
@@ -366,16 +468,19 @@ class MongoEmbeddingStore(VectorStore):
         The two lists are merged by rank rather than raw score - a cosine
         similarity and a BM25 score are not on comparable scales, but their rank
         orderings are, which is exactly what RRF combines.
+
+        version_filter is an MQL dict pushed into $vectorSearch and $text; callers
+        must only pass it when the index declares the filter fields.
         """
         if not query_text:
-            return (await self._vector_search(query_vector, collection_name, limit))[:limit]
+            return (await self._vector_search(query_vector, collection_name, limit, version_filter))[:limit]
 
         settings = self.settings
         depth = fusion_depth(limit, settings.HYBRID_FUSION_DEPTH_MULTIPLIER, settings.HYBRID_FUSION_DEPTH_MIN)
         # Independent queries, so they run together rather than back to back.
         vector_hits, text_hits = await asyncio.gather(
-            self._vector_search(query_vector, collection_name, depth),
-            self._lexical(query_text, collection_name, depth),
+            self._vector_search(query_vector, collection_name, depth, version_filter),
+            self._lexical(query_text, collection_name, depth, version_filter),
         )
         if not text_hits:
             return vector_hits[:limit]
@@ -397,7 +502,8 @@ class MongoEmbeddingStore(VectorStore):
 
     # -- vector half --
 
-    async def _vector_search(self, query_vector: list[float], collection_name: str, limit: int) -> list[dict[str, Any]]:
+    async def _vector_search(self, query_vector: list[float], collection_name: str, limit: int,
+                              version_filter: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         """Atlas $vectorSearch, or the in-process fallback where Atlas is not available."""
         if len(query_vector) != self.dimension:
             # Fail clearly here rather than let Atlas reject the stage with an
@@ -410,7 +516,7 @@ class MongoEmbeddingStore(VectorStore):
         if MongoEmbeddingStore._atlas_vector_search_unavailable:
             return await self._cosine_fallback(query_vector, collection_name, limit)
         try:
-            return await self._atlas_vector_search(query_vector, collection_name, limit)
+            return await self._atlas_vector_search(query_vector, collection_name, limit, version_filter)
         except OperationFailure as e:
             if not is_atlas_search_unavailable(e):
                 logger.error(f"Vector search operation failed in '{collection_name}'. Details: {e}", exc_info=True)
@@ -427,7 +533,8 @@ class MongoEmbeddingStore(VectorStore):
             logger.error(f"An unexpected error occurred during vector search in '{collection_name}': {e}", exc_info=True)
             return []
 
-    async def _atlas_vector_search(self, query_vector: list[float], collection_name: str, limit: int) -> list[dict[str, Any]]:
+    async def _atlas_vector_search(self, query_vector: list[float], collection_name: str, limit: int,
+                                   version_filter: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         settings = self.settings
         pipeline = vector_search_pipeline(
             query_vector,
@@ -436,6 +543,7 @@ class MongoEmbeddingStore(VectorStore):
             limit=limit,
             exact=settings.VECTOR_SEARCH_EXACT,
             overfetch_multiplier=settings.VECTOR_OVERFETCH_MULTIPLIER,
+            extra_filter=version_filter,
         )
         return await self.db[collection_name].aggregate(pipeline).to_list(length=limit)
 
@@ -470,15 +578,20 @@ class MongoEmbeddingStore(VectorStore):
 
     # -- lexical half --
 
-    async def _lexical(self, query_text: str, collection_name: str, limit: int) -> list[dict[str, Any]]:
+    async def _lexical(self, query_text: str, collection_name: str, limit: int,
+                       version_filter: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         """BM25 hits, or the $text index's if LEXICAL_SEARCH says so or BM25 fails."""
         if self.settings.LEXICAL_SEARCH == "bm25":
             try:
                 _, index, docs = await self._bm25_snapshot(collection_name)
-                return [to_hit(docs[i], score) for i, score in index.search(query_text, limit)]
+                fetch_bm25 = limit * 2 if version_filter else limit
+                hits = [to_hit(docs[i], score) for i, score in index.search(query_text, fetch_bm25)]
+                if version_filter:
+                    hits = [h for h in hits if _mql_matches_hit(h, version_filter)][:limit]
+                return hits
             except Exception as e:
                 logger.warning(f"BM25 search failed, using the $text index instead: {e}")
-        return await self._text_search(query_text, collection_name, limit)
+        return await self._text_search(query_text, collection_name, limit, version_filter)
 
     async def _bm25_snapshot(self, collection_name: str):
         """The BM25 index for the active chunks, rebuilt only when they change.
@@ -507,7 +620,8 @@ class MongoEmbeddingStore(VectorStore):
         self._bm25[collection_name] = snapshot = (signature, index, docs)
         return snapshot
 
-    async def _text_search(self, query_text: str, collection_name: str, limit: int) -> list[dict[str, Any]]:
+    async def _text_search(self, query_text: str, collection_name: str, limit: int,
+                           version_filter: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         """
         Lexical search via MongoDB's $text index. Unlike $vectorSearch this is a
         standard community-server feature, so it needs no Atlas fallback - an empty
@@ -515,7 +629,9 @@ class MongoEmbeddingStore(VectorStore):
         building yet, or the collection is empty).
         """
         try:
-            return await self.db[collection_name].aggregate(text_search_pipeline(query_text, limit)).to_list(length=limit)
+            return await self.db[collection_name].aggregate(
+                text_search_pipeline(query_text, limit, extra_filter=version_filter)
+            ).to_list(length=limit)
         except OperationFailure as e:
             logger.warning(
                 f"Text search failed on '{collection_name}' (index missing, still "

@@ -85,6 +85,17 @@ class VectorStore(ABC):
     ) -> int:
         """Soft-deletes every chunk of one document. Returns the count affected."""
 
+    async def fetch_chunks_for_version(
+        self,
+        source_file_id: str,
+        collection_name: str | None = None,
+        limit: int = 500,
+    ) -> list[dict]:
+        """Active content chunks for one indexed version, in page order.
+        Used to gather source text for prebaked comparison generation.
+        Default no-op; override in backends that support it."""
+        return []
+
     async def move_chunks_by_source_id(
         self,
         source_file_id: str,

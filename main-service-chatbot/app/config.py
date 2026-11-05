@@ -516,6 +516,23 @@ class Settings(BaseSettings):
         180, description="Chat-trace rows older than this are deleted at startup and by POST /admin/purge. 0 keeps them forever.",
     )
 
+    # --- Prebaked comparison KB ---
+    # Consecutive-version comparison summaries generated on demand via
+    # POST /admin/documents/{document_key}/generate-comparison. Retrieved as a third
+    # search pass during ALL-mode (comparison) queries alongside the live vector search.
+    COMPARISON_ENABLED: bool = Field(
+        True,
+        description="Allow generating and retrieving prebaked comparison chunks. When False, the "
+                    "generate-comparison endpoint is disabled and ALL-mode queries run on live "
+                    "content chunks only (the behaviour before comparison chunks were added).",
+    )
+    COMPARISON_MAX_CHARS_PER_VERSION: int = Field(
+        15000,
+        description="Maximum characters taken from each document version when building the comparison "
+                    "prompt. Keeps the LLM context manageable for large documents; content beyond this "
+                    "limit is silently truncated.",
+    )
+
     # --- Document versions ---
     VERSION_DETECTION_ENABLED: bool = Field(
         True,
@@ -556,10 +573,12 @@ class Settings(BaseSettings):
                     "the user actually asked is never dropped below this ceiling.",
     )
     REWRITE_EXPANSION_BUDGET: int = Field(
-        4,
+        6,
         description="What the rewrite step aims to fan a query out into: splits plus expansion "
                     "variants combined. A budget, not a guillotine - REWRITE_MAX_QUERIES is the only "
-                    "hard limit, and alternates are spent before an original question is ever dropped.",
+                    "hard limit, and alternates are spent before an original question is ever dropped. "
+                    "Raised from 4 to 6 to give cross-lingual alternates (rule 5 in the rewrite prompt) "
+                    "room alongside synonym alternates without crowding out actual user questions.",
     )
     REWRITE_HISTORY_TURNS: int = Field(
         6,
@@ -572,6 +591,13 @@ class Settings(BaseSettings):
         600,
         description="How much of each of those REWRITE_HISTORY_TURNS messages is kept, characters per "
                     "message.",
+    )
+    REWRITE_LAST_TURN_CHARS: int = Field(
+        2000,
+        description="How much of the most recent Q&A pair (last user + assistant message) is kept in "
+                    "the query-rewrite step. Higher than REWRITE_HISTORY_CHARS so follow-up references "
+                    "like 'point 3' or 'the second requirement' can be resolved from the full previous "
+                    "answer without inflating the prompt for every older turn.",
     )
     INTENT_HISTORY_TURNS: int = Field(
         4,

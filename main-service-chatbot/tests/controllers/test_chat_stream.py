@@ -345,7 +345,7 @@ async def test_a_bare_greeting_is_answered_with_no_model_or_search_call(search):
 
     events = await _run(llm, _settings(INTENT_ROUTING_ENABLED=True), query="hey", local_hour=9)
 
-    assert _shape(events) == [("delta", "Hi! I can help answer questions from your documents. What would you like to know?"), ("result",)]
+    assert _shape(events) == [("delta", "Hi, How can I help you today?"), ("result",)]
     result = _result(events)
     assert (result.collections, result.sources, result.intent) == ([], [], "chitchat")
     assert llm.calls == []

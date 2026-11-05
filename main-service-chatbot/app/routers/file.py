@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, 
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from app.config import Settings, get_settings
+from app.controllers.comparison_controller import generate_comparison
 from app.controllers.file_controller import FileController
 from app.controllers.version_controller import stamp_upload
 from app.dependencies import (
@@ -18,6 +19,7 @@ from app.dependencies import (
     get_kb_catalog,
     require_admin,
 )
+from app.services.llm.chat_llm import ChatLLM, get_chat_llm
 from app.services.vector.search_runtime import SearchRuntime, get_search_runtime
 from app.logic.audit import (
     ACTION_FILE_DELETE,
@@ -93,6 +95,13 @@ async def create_files(
         description="This version's own name: letters, digits, '.', '_' or '-', e.g. '3.2'. Default: the tag in the file name "
                                          "('Policy_v3.2.pdf'), else none - the version number is always set.",
     ),
+    document_key: str | None = Query(
+        None, max_length=200,
+        description="Override the document key used to group versions of the same document. "
+                    "If omitted, derived from the file name by stripping any trailing version tag. "
+                    "Use this when file names don't follow the convention: upload 'policy_2024.pdf' and "
+                    "'policy_2025.pdf' both with document_key='policy' to link them as one document.",
+    ),
     effective_date: date | None = Query(None, description="When this version takes effect (YYYY-MM-DD)."),
     db_service: DatabaseService = Depends(get_db_service),
     file_storage_service: FileStorageService = Depends(get_file_storage_service),
@@ -148,7 +157,7 @@ async def create_files(
         )
 
         await _remember_hash(db_service, file_response.id, content_hash)
-        version = await stamp_upload(db_service, file_response.id, filename, version_label, effective_date)
+        version = await stamp_upload(db_service, file_response.id, filename, version_label, effective_date, document_key_override=document_key)
         file_response = await controller.get_file_by_id(file_response.id)
         await chatbot_queue.send_message({
             "action_type": "create",
@@ -467,3 +476,37 @@ async def update_file_status(
         "chunks_moved": chunks_moved,
         "updated_by": current_user.email,
     }
+
+
+@router.post(
+    "/documents/{document_key}/generate-comparison",
+    status_code=status.HTTP_200_OK,
+    summary="Generate a prebaked comparison between the two most recent versions",
+    description=(
+        "Generates a structured comparison summary between the two most recent indexed versions "
+        "of a document and stores it as a special comparison chunk in MongoDB. "
+        "On the next comparison question (asking about differences between versions), the stored "
+        "chunk is retrieved alongside the live content search, giving the LLM a pre-computed diff. "
+        "Call this endpoint after uploading and indexing a new version. "
+        "Set force=true to regenerate even if a comparison chunk already exists. "
+        "Requires COMPARISON_ENABLED=true (default) and both versions to be fully indexed."
+    ),
+    dependencies=[Depends(require_admin)],
+)
+async def generate_document_comparison(
+    document_key: str,
+    force: bool = Query(False, description="Regenerate even if comparison chunks already exist."),
+    db_service: DatabaseService = Depends(get_db_service),
+    search: SearchRuntime = Depends(get_search_runtime),
+    chat_llm: ChatLLM = Depends(get_chat_llm),
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    if not settings.COMPARISON_ENABLED:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Comparison generation is disabled (COMPARISON_ENABLED=False).",
+        )
+    try:
+        return await generate_comparison(db_service, search, chat_llm, settings, document_key, force=force)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc

@@ -68,7 +68,7 @@ async def _upload(db, allow_duplicate=False):
     user = type("U", (), {"email": "a@x.com"})()
     result = await create_files(
         current_user=user, files=[FakeUpload()], allow_duplicate=allow_duplicate, version_label=None,
-        effective_date=None, db_service=db,
+        document_key=None, effective_date=None, db_service=db,
         file_storage_service=storage, chatbot_queue=queue, settings=_settings(),
     )
     return result, storage, queue

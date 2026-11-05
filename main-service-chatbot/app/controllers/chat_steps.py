@@ -264,6 +264,7 @@ class ChatTurn:
             fetch_new_query_prompt(
                 self.history, self.query_text, catalog_text,
                 s.REWRITE_EXPANSION_BUDGET, s.REWRITE_HISTORY_TURNS, s.REWRITE_HISTORY_CHARS,
+                last_turn_chars=s.REWRITE_LAST_TURN_CHARS,
             ),
             usable_rewrite, "rewrite",
         )

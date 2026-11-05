@@ -29,6 +29,7 @@ from app.logic.chat_events import (
     stage_event,
 )
 from app.logic.chat_records import (
+    convo_history_params,
     history_error_params,
     history_success_params,
     inserted_id,
@@ -36,6 +37,7 @@ from app.logic.chat_records import (
     new_session_params,
     owned_history_params,
     owned_session_params,
+    page_of,
 )
 from app.models.auth import CurrentUser
 from app.logic.grounding import cited_passage_texts
@@ -148,6 +150,34 @@ class ChatSessionController:
             )
         except Exception as db_err:
             logger.critical(f"Failed to log error to database for history_id {history_id}: {db_err}")
+
+
+async def load_history_as_messages(
+    db_service: DatabaseService, conversation_id, user_id: str, max_messages: int,
+) -> list[dict]:
+    """The session's recent turns as LLM message dicts, oldest first.
+
+    Called when the client sent an empty history for an existing conversation_id —
+    the server reloads context from the DB so follow-up questions work even when
+    the client does not carry history forward. Only completed turns (both prompt
+    and response present) are included; a turn that errored has no response and
+    would leave an orphaned user message at the tail of the history.
+    """
+    try:
+        result = await db_service.call_procedure(
+            StoredProcedures.FILTER_CHATBOT_HISTORY,
+            convo_history_params(conversation_id, user_id, max_messages),
+        )
+        rows, _ = page_of(result)
+    except Exception:
+        logger.warning("Could not reload conversation history from DB; continuing without it.", exc_info=True)
+        return []
+    messages = []
+    for row in reversed(rows):  # filter returns newest-first; LLM needs oldest-first
+        if row.get("prompt") and row.get("response"):
+            messages.append({"role": "user", "content": row["prompt"]})
+            messages.append({"role": "assistant", "content": row["response"]})
+    return messages
 
 
 async def recent_questions(

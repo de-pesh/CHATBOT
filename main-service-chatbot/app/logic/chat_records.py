@@ -44,6 +44,11 @@ def history_error_params(history_id: int, conversation_id: int, error: str, user
     return [history_id, conversation_id, None, None, error, None, user_id, collections]
 
 
+def convo_history_params(conversation_id, user_id: str, limit: int) -> list:
+    """filter_chatbot_history: the most recent `limit` turns of a session, for context reloading."""
+    return [None, conversation_id, None, None, user_id, True, 1, limit]
+
+
 def owned_history_params(history_id: int, user_id: str) -> list:
     """filter_chatbot_history: this one history row (chat turn), if it is the caller's - for the
     ownership check in POST /chat/history/{id}/feedback."""
