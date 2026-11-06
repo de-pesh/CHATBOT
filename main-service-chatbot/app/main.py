@@ -2,6 +2,9 @@
 import logging
 
 from fastapi import FastAPI, Request, status
+from fastapi.openapi.docs import get_swagger_ui_html
+from fastapi.openapi.utils import get_openapi
+from fastapi.responses import HTMLResponse
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -34,7 +37,7 @@ app = FastAPI(
     middleware=[
         Middleware(RequestContextMiddleware),
         Middleware(GZipMiddleware, minimum_size=_settings.GZIP_MIN_SIZE_BYTES),
-    ]
+    ],
 )
 
 # CORS_ALLOWED_ORIGINS adds to CORS_LOCAL_ORIGINS rather than replacing it, so the local-dev
@@ -71,6 +74,34 @@ app.include_router(prompts.router, prefix="/prompts", tags=["Prompt Management"]
 app.include_router(chat.router)  # declares its own prefix="/chat", unlike the others
 app.include_router(dms.router)   # declares its own prefix="/dms"
 app.include_router(internal.router, prefix="/internal", include_in_schema=False)
+
+
+def _build_openapi_schema():
+    if app.openapi_schema:
+        return app.openapi_schema
+    schema = get_openapi(title=app.title, version=app.version, routes=app.routes)
+    schema.setdefault("components", {}).setdefault("securitySchemes", {}).update({
+        "UserId":        {"type": "apiKey", "in": "header", "name": "x-user-id"},
+        "EntityId":      {"type": "apiKey", "in": "header", "name": "x-entity-id"},
+        "TenantId":      {"type": "apiKey", "in": "header", "name": "x-tenant-id"},
+        "UserType":      {"type": "apiKey", "in": "header", "name": "x-user-type"},
+        "InternalToken": {"type": "apiKey", "in": "header", "name": "x-internal-token"},
+    })
+    schema["security"] = [{"UserId": [], "EntityId": [], "TenantId": [], "UserType": [], "InternalToken": []}]
+    app.openapi_schema = schema
+    return schema
+
+
+app.openapi = _build_openapi_schema  # type: ignore[method-assign]
+
+
+@app.get("/docs", include_in_schema=False)
+async def custom_swagger_ui() -> HTMLResponse:
+    return get_swagger_ui_html(
+        openapi_url="/openapi.json",
+        title="Chatbot Main Service",
+        swagger_ui_parameters={"persistAuthorization": True},
+    )
 
 
 @app.get(
