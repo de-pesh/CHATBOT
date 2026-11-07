@@ -6,6 +6,7 @@
 */.env
 .env.local
 */.env.local
+.env.uat
 
 # openshift/01-secrets.yaml is filled in with real credentials before
 # `oc apply` (see its own header comment) - never commit the filled-in
