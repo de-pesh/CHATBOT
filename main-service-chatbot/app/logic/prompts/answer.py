@@ -119,7 +119,8 @@ def fetch_final_prompt(all_results, question, catalog_names="", standalone_quest
         "or claim it supports, before the full stop, e.g. \"Employees get 20 days of leave [2].\" "
         "Use several markers such as [1][3] when several passages support it. Only use the "
         "numbers shown in the context. Do not write a list of sources or a \"Cited:\" section, "
-        "and do not put a marker on text that used no context."
+        "and do not put a marker on text that used no context. "
+        "Do not use any other citation format such as (citation:N)."
     )
     version_line = _version_instruction(version_scope)
     language_line = (

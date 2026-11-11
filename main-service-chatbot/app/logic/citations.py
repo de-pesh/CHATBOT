@@ -18,6 +18,10 @@ MARKER = re.compile(r"(\s*)\[(\d+(?:\s*,\s*\d+)*)\]")
 # that falls back to the old habit would otherwise show the citations twice.
 LEGACY_CITED_BLOCK = re.compile(r"^[ \t]*\**Cited:.*\Z", re.IGNORECASE | re.MULTILINE | re.DOTALL)
 
+# Some Bedrock models (e.g. Amazon Nova) emit native "(citation:N)" markers even when
+# not asked to. These carry no source info this system tracks, so they are stripped.
+BEDROCK_CITATION_MARKER = re.compile(r"\(citation:\d+\)")
+
 # The anchors `_link` builds, and the trailing "Sources:" list.
 ANCHOR = re.compile(r"<a target='_blank'[^>]*>([^<]*)</a>")
 SOURCES_BLOCK = re.compile(r"\n*^Sources:\n\[\d+\].*\Z", re.MULTILINE | re.DOTALL)
@@ -110,7 +114,8 @@ def render_markers(text: str, by_n: dict, urls: dict, link_style: str, label_nam
             markers.append(_link(url, label, _describe(by_n[n]), link_style) if url else label)
         return match.group(1) + "".join(dict.fromkeys(markers)) if markers else ""
 
-    return MARKER.sub(replace, text)
+    text = MARKER.sub(replace, text)
+    return BEDROCK_CITATION_MARKER.sub("", text)
 
 
 def strip_citations(text: str) -> str:
@@ -124,6 +129,7 @@ def strip_citations(text: str) -> str:
     """
     if not text:
         return text
+    text = BEDROCK_CITATION_MARKER.sub("", text)
     text = SOURCES_BLOCK.sub("", text)
     # A citation link goes, with the space before it; any other link keeps its text.
     text = re.sub(r"[ \t]*<a target='_blank'[^>]*>\[[^<]*\]</a>", "", text)
