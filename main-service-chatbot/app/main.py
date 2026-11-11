@@ -32,7 +32,7 @@ _settings = get_settings()
 
 app = FastAPI(
     title="Chatbot Main Service",
-    version="1.0.0",
+    version="1.1",
     lifespan=lifespan,
     middleware=[
         Middleware(RequestContextMiddleware),
