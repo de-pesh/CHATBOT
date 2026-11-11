@@ -1,8 +1,0 @@
-/* Give the chat a bounded height to fill, so the message list scrolls
-   internally and the input stays pinned to the bottom. */
-html,
-body,
-#root {
-  height: 100%;
-  margin: 0;
-}
